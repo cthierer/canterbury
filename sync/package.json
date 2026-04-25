@@ -1,0 +1,27 @@
+{
+	"name": "canterbury-sync",
+	"version": "1.0.0",
+	"main": "index.js",
+	"type": "module",
+	"scripts": {
+		"format": "prettier --config .prettierrc --write sync.js package.json package-lock.json .prettierrc ../docker-compose.yml ../README.md ../AGENTS.md ../CONTRIBUTING.md",
+		"format:check": "prettier --config .prettierrc --check sync.js package.json package-lock.json .prettierrc ../docker-compose.yml ../README.md ../AGENTS.md ../CONTRIBUTING.md",
+		"lint": "eslint .",
+		"lint:fix": "eslint . --fix",
+		"check": "node --check sync.js && npm run lint && npm run format:check"
+	},
+	"author": "",
+	"license": "UNLICENSED",
+	"description": "",
+	"dependencies": {
+		"dotenv": "^17.4.2",
+		"obsidian-headless": "^0.0.8"
+	},
+	"devDependencies": {
+		"@eslint/js": "^10.0.0",
+		"eslint": "^10.0.0",
+		"eslint-config-prettier": "^10.0.0",
+		"globals": "^16.0.0",
+		"prettier": "^3.6.2"
+	}
+}

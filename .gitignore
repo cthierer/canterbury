@@ -1,0 +1,5 @@
+.env
+.codex
+vault/
+sync/.env
+sync/node_modules/

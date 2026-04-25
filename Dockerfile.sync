@@ -1,0 +1,34 @@
+FROM node:24-bookworm-slim
+
+WORKDIR /app
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends  \
+    ca-certificates \
+    git \
+    tini \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY sync/package.json sync/package-lock.json ./
+RUN npm ci --omit=dev
+
+RUN mkdir -p /vault
+
+VOLUME ["/vault"]
+
+RUN useradd -m -u 10001 obsidian \
+    && chown -R obsidian:obsidian /app /vault
+
+ENV SYNC_VAULT_PATH=/vault
+ENV SYNC_VAULT_NAME=""
+ENV SYNC_VAULT_PASSWORD="" 
+ENV SYNC_OBSIDIAN_AUTH_TOKEN=""
+
+COPY sync/sync.js /app/sync.js
+
+RUN chmod +x /app/sync.js \
+    && chown obsidian:obsidian /app/sync.js
+
+USER obsidian
+
+ENTRYPOINT ["tini", "--", "/app/sync.js"]

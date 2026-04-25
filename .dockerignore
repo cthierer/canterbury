@@ -1,0 +1,7 @@
+.codex
+.env
+.git
+.gitignore
+vault/
+sync/.env
+sync/node_modules/

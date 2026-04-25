@@ -1,0 +1,17 @@
+services:
+  obsidian-sync:
+    build:
+      context: .
+      dockerfile: Dockerfile.sync
+    image: canterbury-sync:latest
+    container_name: canterbury-sync
+    restart: 'no'
+    env_file:
+      - ./sync/.env
+    environment:
+      SYNC_VAULT_PATH: /vault
+    volumes:
+      - obsidian-vault:/vault
+
+volumes:
+  obsidian-vault:
