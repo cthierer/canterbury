@@ -55,26 +55,29 @@ func (r *Repository) ReadNote(ctx context.Context, path vault.NotePath) (vault.N
 		return vault.Note{}, fmt.Errorf("read file %q: %w", filePath, err)
 	}
 
-	// TODO parse frontmatter
-
 	title := titleFromNotePath(path)
 
-	metadata := vault.NoteMetadata{
-		ModifiedAt: info.ModTime(),
-		Path:       path,
-		SizeBytes:  sizeBytes,
-		Title:      title,
-	}
-
-	ref := vault.NoteRef{
-		Path:  path,
-		Title: title,
+	document, err := parseNoteDocument(string(content))
+	if err != nil {
+		return vault.Note{}, fmt.Errorf("parse note document: %w", err)
 	}
 
 	return vault.Note{
-		Content:  string(content),
-		Metadata: metadata,
-		Ref:      ref,
+		Content: document.Body,
+		Metadata: vault.NoteMetadata{
+			ModifiedAt:     info.ModTime(),
+			Path:           path,
+			SizeBytes:      sizeBytes,
+			Title:          title,
+			HasFrontmatter: document.HasFrontmatter,
+			Frontmatter:    document.Frontmatter,
+			Access:         document.Access,
+			Tags:           document.Tags,
+		},
+		Ref: vault.NoteRef{
+			Path:  path,
+			Title: title,
+		},
 	}, nil
 }
 

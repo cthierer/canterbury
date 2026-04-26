@@ -55,6 +55,44 @@ func TestRepositoryReadNote(t *testing.T) {
 		}
 	})
 
+	t.Run("reads frontmatter metadata and body content", func(t *testing.T) {
+		root := t.TempDir()
+		notePath := mustNotePath(t, "Notes/Scoped.md")
+		content := "---\n" +
+			"access:\n" +
+			"  scopes:\n" +
+			"    - personal-agent\n" +
+			"    - public-site\n" +
+			"tags:\n" +
+			"  - project\n" +
+			"  - canterbury\n" +
+			"custom: value\n" +
+			"---\n" +
+			"# Scoped\n\nBody text.\n"
+		writeNoteFile(t, root, notePath, content)
+		repository := newTestRepository(t, root)
+
+		note, err := repository.ReadNote(context.Background(), notePath)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if note.Content != "# Scoped\n\nBody text.\n" {
+			t.Fatalf("got content %q, want body without frontmatter", note.Content)
+		}
+
+		if !note.Metadata.HasFrontmatter {
+			t.Fatal("expected frontmatter")
+		}
+
+		assertScopes(t, note.Metadata.Access.Scopes, []vault.Scope{"personal-agent", "public-site"})
+		assertTags(t, note.Metadata.Tags, []vault.Tag{"project", "canterbury"})
+
+		if got := note.Metadata.Frontmatter["custom"]; got != "value" {
+			t.Fatalf("got custom frontmatter %#v, want %q", got, "value")
+		}
+	})
+
 	t.Run("returns context error before reading", func(t *testing.T) {
 		root := t.TempDir()
 		repository := newTestRepository(t, root)
@@ -171,4 +209,32 @@ func mustNotePath(t *testing.T, value string) vault.NotePath {
 	}
 
 	return notePath
+}
+
+func assertScopes(t *testing.T, got []vault.Scope, want []vault.Scope) {
+	t.Helper()
+
+	if len(got) != len(want) {
+		t.Fatalf("got %d scopes, want %d", len(got), len(want))
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("scope %d got %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func assertTags(t *testing.T, got []vault.Tag, want []vault.Tag) {
+	t.Helper()
+
+	if len(got) != len(want) {
+		t.Fatalf("got %d tags, want %d", len(got), len(want))
+	}
+
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("tag %d got %q, want %q", i, got[i], want[i])
+		}
+	}
 }
