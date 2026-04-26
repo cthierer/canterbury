@@ -82,6 +82,7 @@ Follow the repository formatting rules:
 
 - `.editorconfig` is authoritative for editor behavior.
 - `.prettierrc` configures repository-wide Prettier formatting.
+- `.golangci.yml` configures Go linting.
 - JavaScript uses ES modules.
 - Prefer tabs with width 2 for JavaScript and JSON.
 - Prefer LF line endings.
@@ -97,6 +98,9 @@ npm run check
 This runs:
 
 - `prettier --check`
+- `gofmt` checks
+- `go test ./internal/...`
+- `golangci-lint run ./internal/...`
 - `node --check sync.js`
 - `eslint .`
 
@@ -155,6 +159,7 @@ clear order.
 - `docker-compose.yml`: local sync worker deployment.
 - `package.json`: repository-level formatting and check orchestration.
 - `.prettierrc`: repository-wide Prettier config.
+- `.golangci.yml`: Go linting config.
 - `sync/sync.js`: sync worker entrypoint.
 - `sync/package.json`: sync worker tooling and dependencies.
 - `sync/eslint.config.js`: ESLint flat config.

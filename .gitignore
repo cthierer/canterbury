@@ -1,6 +1,7 @@
 .env
+.cache/
 .codex
 node_modules/
-vault/
+/vault/
 sync/.env
 sync/node_modules/

@@ -63,6 +63,9 @@ The intended system has several components:
 
 The current repository only implements the sync worker.
 
+See [Canterbury Architecture](docs/architecture.md) for the planned Go package
+structure and dependency boundaries.
+
 ## Access Model
 
 The planned access model is default deny. Notes will opt in to controlled
@@ -92,6 +95,8 @@ To run the current sync worker, you need:
 
 To develop the sync component, you also need:
 
+- Go 1.24 or newer.
+- `golangci-lint` 2.11.4 or a compatible 2.x release.
 - Node.js 24 or a compatible version supported by the sync dependencies.
 - npm.
 
@@ -178,6 +183,12 @@ Install repository formatting dependencies:
 npm install
 ```
 
+Install Go linting tooling:
+
+```bash
+curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.11.4
+```
+
 Install development dependencies for the sync component:
 
 ```bash
@@ -194,6 +205,18 @@ Format files from the repository root:
 
 ```bash
 npm run format
+```
+
+Run Go tests:
+
+```bash
+npm run test:go
+```
+
+Run Go linting:
+
+```bash
+npm run lint:go
 ```
 
 Lint sync worker files:

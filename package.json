@@ -3,9 +3,13 @@
 	"version": "1.0.0",
 	"private": true,
 	"scripts": {
-		"format": "prettier --write .prettierrc package.json package-lock.json docker-compose.yml README.md AGENTS.md CONTRIBUTING.md sync/sync.js sync/package.json sync/package-lock.json sync/eslint.config.js",
-		"format:check": "prettier --check .prettierrc package.json package-lock.json docker-compose.yml README.md AGENTS.md CONTRIBUTING.md sync/sync.js sync/package.json sync/package-lock.json sync/eslint.config.js",
-		"check": "npm run format:check && npm --prefix sync run check:code"
+		"format": "prettier --write .golangci.yml .prettierrc package.json package-lock.json docker-compose.yml README.md AGENTS.md CONTRIBUTING.md docs/architecture.md sync/sync.js sync/package.json sync/package-lock.json sync/eslint.config.js && npm run format:go",
+		"format:check": "prettier --check .golangci.yml .prettierrc package.json package-lock.json docker-compose.yml README.md AGENTS.md CONTRIBUTING.md docs/architecture.md sync/sync.js sync/package.json sync/package-lock.json sync/eslint.config.js",
+		"format:go": "gofmt -w internal",
+		"format:go:check": "test -z \"$(gofmt -l internal)\"",
+		"lint:go": "GOCACHE=${GOCACHE:-$PWD/.cache/go-build} GOLANGCI_LINT_CACHE=${GOLANGCI_LINT_CACHE:-$PWD/.cache/golangci-lint} golangci-lint run ./internal/...",
+		"test:go": "GOCACHE=${GOCACHE:-$PWD/.cache/go-build} go test ./internal/...",
+		"check": "npm run format:check && npm run format:go:check && npm run test:go && npm run lint:go && npm --prefix sync run check:code"
 	},
 	"devDependencies": {
 		"prettier": "^3.6.2"

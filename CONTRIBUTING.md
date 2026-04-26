@@ -18,6 +18,12 @@ Install repository formatting dependencies:
 npm install
 ```
 
+Install Go linting tooling:
+
+```bash
+curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.11.4
+```
+
 Install sync worker dependencies:
 
 ```bash
@@ -30,8 +36,8 @@ Run all checks before submitting changes:
 npm run check
 ```
 
-This runs repository formatting checks plus sync worker syntax checking and
-ESLint.
+This runs repository formatting checks, Go tests, Go linting, sync worker syntax
+checking, and ESLint.
 
 ## Commit Standards
 
