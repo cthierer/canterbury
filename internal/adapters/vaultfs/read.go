@@ -17,6 +17,10 @@ func (r *Repository) ReadNote(ctx context.Context, path vault.NotePath) (vault.N
 		return vault.Note{}, err
 	}
 
+	if isHiddenOrSystemPath(path) {
+		return vault.Note{}, fmt.Errorf("reject hidden/system note path %q: %w", path, vault.ErrInvalidNotePath)
+	}
+
 	filePath, err := joinVaultPath(r.root, path)
 	if err != nil {
 		return vault.Note{}, fmt.Errorf("join vault path: %w", err)

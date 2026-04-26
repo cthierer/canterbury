@@ -37,3 +37,17 @@ func isWithinRoot(root, candidate string) bool {
 
 	return rel == "." || (rel != ".." && !strings.HasPrefix(rel, ".."+string(filepath.Separator)))
 }
+
+func isHiddenOrSystemPath(notePath vault.NotePath) bool {
+	for _, part := range strings.Split(notePath.String(), "/") {
+		if isHiddenOrSystemName(part) {
+			return true
+		}
+	}
+
+	return false
+}
+
+func isHiddenOrSystemName(name string) bool {
+	return strings.HasPrefix(name, ".")
+}

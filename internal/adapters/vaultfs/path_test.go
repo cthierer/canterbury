@@ -93,6 +93,69 @@ func TestIsWithinRoot(t *testing.T) {
 	}
 }
 
+func TestIsHiddenOrSystemPath(t *testing.T) {
+	tests := []struct {
+		name string
+		path vault.NotePath
+		want bool
+	}{
+		{
+			name: "visible note is allowed",
+			path: mustNotePath(t, "Projects/Canterbury.md"),
+			want: false,
+		},
+		{
+			name: "hidden root directory is rejected",
+			path: mustNotePath(t, ".obsidian/Config.md"),
+			want: true,
+		},
+		{
+			name: "hidden nested directory is rejected",
+			path: mustNotePath(t, "Projects/.private/Plan.md"),
+			want: true,
+		},
+		{
+			name: "hidden file is rejected",
+			path: mustNotePath(t, "Projects/.Draft.md"),
+			want: true,
+		},
+		{
+			name: "dots inside visible name are allowed",
+			path: mustNotePath(t, "Projects/v1.2.md"),
+			want: false,
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isHiddenOrSystemPath(test.path); got != test.want {
+				t.Fatalf("got %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
+func TestIsHiddenOrSystemName(t *testing.T) {
+	tests := []struct {
+		name string
+		want bool
+	}{
+		{name: ".obsidian", want: true},
+		{name: ".trash", want: true},
+		{name: ".Draft.md", want: true},
+		{name: "Canterbury.md", want: false},
+		{name: "v1.2.md", want: false},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := isHiddenOrSystemName(test.name); got != test.want {
+				t.Fatalf("got %t, want %t", got, test.want)
+			}
+		})
+	}
+}
+
 func writeNoteFile(t *testing.T, root string, notePath vault.NotePath, content string) string {
 	t.Helper()
 

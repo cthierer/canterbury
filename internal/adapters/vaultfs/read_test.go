@@ -69,6 +69,18 @@ func TestRepositoryReadNote(t *testing.T) {
 		}
 	})
 
+	t.Run("rejects hidden or system note path", func(t *testing.T) {
+		root := t.TempDir()
+		notePath := mustNotePath(t, ".obsidian/Config.md")
+		writeNoteFile(t, root, notePath, "system config")
+		repository := newTestRepository(t, root)
+
+		_, err := repository.ReadNote(context.Background(), notePath)
+		if !errors.Is(err, vault.ErrInvalidNotePath) {
+			t.Fatalf("got error %v, want %v", err, vault.ErrInvalidNotePath)
+		}
+	})
+
 	t.Run("rejects directory note path", func(t *testing.T) {
 		root := t.TempDir()
 		notePath := mustNotePath(t, "Directory.md")
