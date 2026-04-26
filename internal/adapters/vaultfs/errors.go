@@ -11,7 +11,4 @@ var (
 
 	// ErrIsDirectory indicates a resolved note path points to a directory.
 	ErrIsDirectory = errors.New("cannot read directory as note")
-
-	// ErrNotImplemented indicates a repository method has not been implemented yet.
-	ErrNotImplemented = errors.New("method not implemented")
 )
