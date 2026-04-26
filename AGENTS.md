@@ -81,27 +81,26 @@ access:
 Follow the repository formatting rules:
 
 - `.editorconfig` is authoritative for editor behavior.
-- `sync/.prettierrc` configures Prettier.
+- `.prettierrc` configures repository-wide Prettier formatting.
 - JavaScript uses ES modules.
 - Prefer tabs with width 2 for JavaScript and JSON.
 - Prefer LF line endings.
 - Do not add semicolons.
 - Use single quotes.
 
-For sync component changes, run:
+For repository changes, run from the repository root:
 
 ```bash
-cd sync
 npm run check
 ```
 
 This runs:
 
+- `prettier --check`
 - `node --check sync.js`
 - `eslint .`
-- `prettier --check`
 
-Use `npm run format` and `npm run lint:fix` when appropriate.
+Use root `npm run format` and sync `npm run lint:fix` when appropriate.
 
 ## Documentation Standards
 
@@ -154,8 +153,9 @@ clear order.
 - `README.md`: project overview, usage, and roadmap.
 - `Dockerfile.sync`: sync worker image.
 - `docker-compose.yml`: local sync worker deployment.
+- `package.json`: repository-level formatting and check orchestration.
+- `.prettierrc`: repository-wide Prettier config.
 - `sync/sync.js`: sync worker entrypoint.
-- `sync/package.json`: sync tooling and dependencies.
+- `sync/package.json`: sync worker tooling and dependencies.
 - `sync/eslint.config.js`: ESLint flat config.
-- `sync/.prettierrc`: Prettier config.
 - `.editorconfig`: repository editor defaults.

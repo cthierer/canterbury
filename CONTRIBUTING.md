@@ -12,20 +12,26 @@ unless they exist in the repository.
 
 ## Development Setup
 
-Install sync worker dependencies:
+Install repository formatting dependencies:
 
 ```bash
-cd sync
 npm install
 ```
 
-Run the sync component checks before submitting changes:
+Install sync worker dependencies:
+
+```bash
+npm --prefix sync install
+```
+
+Run all checks before submitting changes:
 
 ```bash
 npm run check
 ```
 
-This runs syntax checking, ESLint, and Prettier formatting checks.
+This runs repository formatting checks plus sync worker syntax checking and
+ESLint.
 
 ## Commit Standards
 

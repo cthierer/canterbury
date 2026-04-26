@@ -4,11 +4,10 @@
 	"main": "index.js",
 	"type": "module",
 	"scripts": {
-		"format": "prettier --config .prettierrc --write sync.js package.json package-lock.json .prettierrc ../docker-compose.yml ../README.md ../AGENTS.md ../CONTRIBUTING.md",
-		"format:check": "prettier --config .prettierrc --check sync.js package.json package-lock.json .prettierrc ../docker-compose.yml ../README.md ../AGENTS.md ../CONTRIBUTING.md",
 		"lint": "eslint .",
 		"lint:fix": "eslint . --fix",
-		"check": "node --check sync.js && npm run lint && npm run format:check"
+		"check:code": "node --check sync.js && npm run lint",
+		"check": "npm run check:code && npm --prefix .. run format:check"
 	},
 	"author": "",
 	"license": "UNLICENSED",
@@ -21,7 +20,6 @@
 		"@eslint/js": "^10.0.0",
 		"eslint": "^10.0.0",
 		"eslint-config-prettier": "^10.0.0",
-		"globals": "^16.0.0",
-		"prettier": "^3.6.2"
+		"globals": "^16.0.0"
 	}
 }

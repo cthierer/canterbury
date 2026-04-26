@@ -15,7 +15,7 @@ Canterbury is in early development. The current implementation includes:
 - A Node-based sync worker container.
 - `obsidian-headless` integration.
 - Docker Compose configuration.
-- Formatting and linting tooling for the sync component.
+- Repository formatting tooling and linting tooling for the sync component.
 
 Planned components include:
 
@@ -172,11 +172,16 @@ directory.
 
 ## Develop Canterbury
 
+Install repository formatting dependencies:
+
+```bash
+npm install
+```
+
 Install development dependencies for the sync component:
 
 ```bash
-cd sync
-npm install
+npm --prefix sync install
 ```
 
 Run all checks:
@@ -185,22 +190,28 @@ Run all checks:
 npm run check
 ```
 
-Format files:
+Format files from the repository root:
 
 ```bash
 npm run format
 ```
 
-Lint files:
+Lint sync worker files:
 
 ```bash
-npm run lint
+npm --prefix sync run lint
 ```
 
-Auto-fix lint issues where possible:
+Auto-fix sync worker lint issues where possible:
 
 ```bash
-npm run lint:fix
+npm --prefix sync run lint:fix
+```
+
+You can also run the sync component check directly:
+
+```bash
+npm --prefix sync run check
 ```
 
 ## Troubleshoot The Sync Worker
@@ -234,10 +245,9 @@ Initial non-goals include:
 
 ## Contributing
 
-Before contributing to the sync component, run:
+Before contributing, run:
 
 ```bash
-cd sync
 npm run check
 ```
 
