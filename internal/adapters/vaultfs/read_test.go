@@ -16,7 +16,7 @@ const maxNoteBytes = 10 * 1024 * 1024
 func TestRepositoryReadNote(t *testing.T) {
 	t.Run("reads note content and file metadata", func(t *testing.T) {
 		root := t.TempDir()
-		notePath := mustNotePath(t, "Notes/Hello.md")
+		notePath := mustNotePath(t, "Notes/Hello.World.md")
 		content := "# Hello\n\nBody text.\n"
 		writeNoteFile(t, root, notePath, content)
 
@@ -34,8 +34,16 @@ func TestRepositoryReadNote(t *testing.T) {
 			t.Fatalf("got ref path %q, want %q", note.Ref.Path, notePath)
 		}
 
+		if note.Ref.Title != "Hello.World" {
+			t.Fatalf("got ref title %q, want %q", note.Ref.Title, "Hello.World")
+		}
+
 		if note.Metadata.Path != notePath {
 			t.Fatalf("got metadata path %q, want %q", note.Metadata.Path, notePath)
+		}
+
+		if note.Metadata.Title != "Hello.World" {
+			t.Fatalf("got metadata title %q, want %q", note.Metadata.Title, "Hello.World")
 		}
 
 		if note.Metadata.SizeBytes != int64(len(content)) {

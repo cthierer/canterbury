@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	pathpkg "path"
 
 	"github.com/cthierer/canterbury/internal/domain/vault"
 )
@@ -56,16 +57,18 @@ func (r *Repository) ReadNote(ctx context.Context, path vault.NotePath) (vault.N
 
 	// TODO parse frontmatter
 
+	title := titleFromNotePath(path)
+
 	metadata := vault.NoteMetadata{
 		ModifiedAt: info.ModTime(),
 		Path:       path,
 		SizeBytes:  sizeBytes,
-		// TODO populate title
+		Title:      title,
 	}
 
 	ref := vault.NoteRef{
-		Path: path,
-		// TODO populate title
+		Path:  path,
+		Title: title,
 	}
 
 	return vault.Note{
@@ -73,4 +76,9 @@ func (r *Repository) ReadNote(ctx context.Context, path vault.NotePath) (vault.N
 		Metadata: metadata,
 		Ref:      ref,
 	}, nil
+}
+
+func titleFromNotePath(notePath vault.NotePath) string {
+	fileName := pathpkg.Base(notePath.String())
+	return fileName[:len(fileName)-len(pathpkg.Ext(fileName))]
 }
