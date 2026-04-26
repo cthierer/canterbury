@@ -24,6 +24,9 @@ type SearchNotesQuery struct {
 	Tags   TagFilter
 	Access AccessFilter
 	Limit  int
+	// Cursor resumes a prior search page. The current filesystem adapter treats
+	// cursors as best-effort offsets over the live sorted result set, not stable
+	// snapshot tokens.
 	Cursor string
 	Sort   SearchSort
 }
@@ -60,7 +63,9 @@ type SearchNoteResult struct {
 
 // SearchNotesPage contains one page of search results.
 type SearchNotesPage struct {
-	Results    []SearchNoteResult
+	Results []SearchNoteResult
+	// NextCursor is empty when there are no more known results. Current cursors
+	// may skip or repeat results if the backing vault changes between requests.
 	NextCursor string
 }
 

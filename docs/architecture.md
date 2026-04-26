@@ -90,14 +90,20 @@ Authorization belongs in an application/policy layer.
 
 ## Filesystem Repository
 
-`internal/adapters/vaultfs` will implement the vault repository port against the
-synced local vault mirror. It should:
+`internal/adapters/vaultfs` implements the initial filesystem-backed vault
+repository against the synced local vault mirror. It currently supports safe
+Markdown note reads and direct filesystem search. It should continue to:
 
 - read only Markdown notes through normalized vault-relative paths;
 - reject traversal, absolute paths, hidden/system paths, and symlink escapes;
-- parse YAML frontmatter and Markdown body content;
-- support direct filesystem search for the first implementation;
+- parse YAML frontmatter and Markdown body content when metadata parsing lands;
 - remain replaceable by a future SQLite-backed index implementation.
+
+Direct filesystem search currently uses offset-based pagination over each live,
+sorted scan. These cursors are best-effort continuation markers rather than
+stable snapshot tokens, so callers may see skipped or repeated results if the
+vault changes between page requests. A future indexed repository can replace
+this with stronger cursor semantics.
 
 ## Future Layers
 
