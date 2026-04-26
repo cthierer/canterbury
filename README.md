@@ -21,7 +21,8 @@ Planned components include:
 
 - A Go vault service that exposes controlled vault access.
 - MCP-compatible tools for AI agents.
-- Frontmatter-based authorization and classification.
+- Scope-based authorization using note-declared access scopes and principal
+  scopes.
 - Independent audit logging.
 - Indexing and plugin-style vault operations.
 
@@ -53,8 +54,8 @@ The intended system has several components:
 
 - **Sync worker**: Mirrors an Obsidian vault using `obsidian-headless`.
 - **Vault service**: Provides the primary controlled interface to vault data.
-- **Authorization and classification**: Grants access only to explicitly marked
-  files and matching agent scopes.
+- **Authorization and classification**: Grants access only to explicitly scoped
+  notes when the caller principal has matching scopes.
 - **Audit system**: Records operations outside the vault in an append-only log.
 - **Indexing layer**: Parses notes into searchable metadata.
 - **Plugin and operation framework**: Runs extensible processing over vault
@@ -64,19 +65,20 @@ The current repository only implements the sync worker.
 
 ## Access Model
 
-The planned access model is default deny. Notes will opt in to AI access through
-frontmatter such as:
+The planned access model is default deny. Notes will opt in to controlled
+service exposure by declaring access scopes in frontmatter:
 
 ```yaml
-ai:
-  access: true
+access:
   scopes:
     - personal-agent
+    - public-site
 ```
 
-Agents will operate with scoped identities. A future vault service will grant
-access only when a note explicitly allows AI access and the agent scope matches
-the note scope.
+Missing `access.scopes` means the note is not available through controlled
+service interfaces. Future callers, including AI agents, website renderers, and
+administrative tools, will operate as principals with scopes. The policy layer
+will grant access only when the principal scopes match the note access scopes.
 
 ## Project Dependencies
 
@@ -217,7 +219,7 @@ npm run lint:fix
 The planned MVP includes:
 
 - Read-only vault access through MCP-compatible tools.
-- Frontmatter-based access control.
+- Scope-based frontmatter access control.
 - Vault sync through Obsidian Headless.
 - Audit logging outside the vault.
 - Basic indexing with SQLite.

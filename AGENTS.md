@@ -44,8 +44,8 @@ The broader system is expected to include:
 - **Sync worker**: trusted component with Obsidian credentials.
 - **Vault service**: Go service that exposes controlled access to vault data.
 - **MCP tools**: AI-facing tool interface for querying vault data.
-- **Authorization and classification**: default-deny access based on note
-  frontmatter and agent scopes.
+- **Authorization and classification**: default-deny access based on
+  note-declared access scopes and caller principal scopes.
 - **Audit system**: independent append-only audit records outside the vault.
 - **Indexing layer**: parsed metadata/search cache, likely SQLite first.
 - **Plugin and operation framework**: extensible processing over vault events.
@@ -61,15 +61,17 @@ Maintain these assumptions:
 - Future vault services must not receive Obsidian account credentials.
 - AI agents must not access vault files directly.
 - Access should be default deny.
-- Only explicitly marked notes should become available to agents.
+- Only notes declaring allowed `access.scopes` should become available through
+  controlled service interfaces.
+- AI agents and future integrations should be treated as principals with scopes.
+- Missing `access.scopes` should remain default deny.
 - Future write operations must not commit successfully without a corresponding
   independent audit record.
 
 The planned frontmatter shape is:
 
 ```yaml
-ai:
-  access: true
+access:
   scopes:
     - personal-agent
 ```
