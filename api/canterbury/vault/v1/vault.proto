@@ -1,0 +1,75 @@
+syntax = "proto3";
+
+package canterbury.vault.v1;
+
+import "google/protobuf/struct.proto";
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/cthierer/canterbury/gen/go/canterbury/vault/v1;vaultv1";
+
+service VaultService {
+  rpc ReadNote(ReadNoteRequest) returns (ReadNoteResponse);
+  rpc SearchNotes(SearchNotesRequest) returns (SearchNotesResponse);
+}
+
+message ReadNoteRequest {
+  NoteRef ref = 1;
+}
+
+message ReadNoteResponse {
+  Note note = 1;
+}
+
+message SearchNotesRequest {
+  SearchNotesQuery query = 1;
+  SearchNotesFilter filter = 2;
+  int32 page_size = 3;
+  string page_token = 4;
+  SearchSort sort = 5;
+}
+
+message SearchNotesResponse {
+  repeated SearchNoteResult results = 1;
+  string next_page_token = 2;
+}
+
+message SearchNotesQuery {
+  string text = 1;
+}
+
+message SearchNotesFilter {
+  repeated string include_path_prefixes = 1;
+  repeated string exclude_path_prefixes = 2;
+  repeated string all_tags = 3;
+  repeated string any_tags = 4;
+}
+
+message Note {
+  NoteRef ref = 1;
+  NoteMetadata metadata = 2;
+  string content = 3;
+}
+
+message SearchNoteResult {
+  NoteRef ref = 1;
+  NoteMetadata metadata = 2;
+  string snippet = 3;
+}
+
+message NoteRef {
+  string path = 1;
+}
+
+message NoteMetadata {
+  string title = 1;
+  repeated string tags = 2;
+  int64 size_bytes = 3;
+  google.protobuf.Timestamp modified_at = 4;
+  google.protobuf.Struct properties = 5;
+}
+
+enum SearchSort {
+  SEARCH_SORT_UNSPECIFIED = 0;
+  SEARCH_SORT_PATH_ASC = 1;
+  SEARCH_SORT_MODIFIED_DESC = 2;
+}
