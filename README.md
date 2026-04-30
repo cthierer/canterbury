@@ -5,8 +5,8 @@ vault through a controlled service layer. The long-term goal is to let agents
 read, search, and eventually write vault content while enforcing explicit access
 policies and recording an independent audit trail of every interaction.
 
-This repository currently implements the first component: a Dockerized sync
-worker that mirrors an Obsidian Sync vault into managed container storage.
+This repository currently implements a Dockerized sync worker and an early local
+Go vault service with a scoped `ReadNote` RPC.
 
 ## Project Status
 
@@ -15,14 +15,17 @@ Canterbury is in early development. The current implementation includes:
 - A Node-based sync worker container.
 - `obsidian-headless` integration.
 - Docker Compose configuration.
-- Repository formatting tooling and linting tooling for the sync component.
+- A local Go vault service that reads scoped Markdown notes from a filesystem
+  vault mirror.
+- Scope-based authorization using note-declared access scopes and a fixed local
+  principal configured by environment variable.
+- Connect/gRPC health, reflection, and `ReadNote` handlers.
+- Repository formatting, test, and linting tooling.
 
-Planned components include:
+Planned or incomplete components include:
 
-- A Go vault service that exposes controlled vault access.
+- Search RPC support in the Connect service.
 - MCP-compatible tools for AI agents.
-- Scope-based authorization using note-declared access scopes and principal
-  scopes.
 - Independent audit logging.
 - Indexing and plugin-style vault operations.
 
@@ -33,8 +36,9 @@ vault. AI agents should not read or write vault files directly. Instead, agents
 will interact with a service that authorizes requests, exposes structured query
 interfaces, and records actions outside the vault.
 
-The sync worker is the trusted component that mirrors the vault. Future services
-will consume that mirrored vault without receiving Obsidian account credentials.
+The sync worker is the trusted component that mirrors the vault. The vault
+service consumes that mirrored vault without receiving Obsidian account
+credentials.
 
 ## Who This Project Is For
 
@@ -44,6 +48,11 @@ records.
 
 The current sync worker is useful if you want to run Obsidian Sync in Docker on
 a server, NAS, homelab machine, or cloud container environment.
+
+The current vault service is useful for local development of controlled read
+access over a filesystem mirror of the vault. It is not yet a complete
+agent-facing service because request authentication, audit logging, and MCP
+tools are still planned.
 
 Canterbury is not a replacement for an Obsidian Sync subscription. The sync
 worker requires valid Obsidian Sync credentials and an existing remote vault.
@@ -61,15 +70,17 @@ The intended system has several components:
 - **Plugin and operation framework**: Runs extensible processing over vault
   events and content.
 
-The current repository only implements the sync worker.
+The current repository implements the sync worker and the first vault service
+read path. Search, MCP tools, indexing, and audit logging are not implemented
+yet.
 
 See [Canterbury Architecture](docs/architecture.md) for the planned Go package
 structure and dependency boundaries.
 
 ## Access Model
 
-The planned access model is default deny. Notes will opt in to controlled
-service exposure by declaring access scopes in frontmatter:
+The access model is default deny. Notes opt in to controlled service exposure by
+declaring access scopes in frontmatter:
 
 ```yaml
 access:
@@ -79,9 +90,10 @@ access:
 ```
 
 Missing `access.scopes` means the note is not available through controlled
-service interfaces. Future callers, including AI agents, website renderers, and
-administrative tools, will operate as principals with scopes. The policy layer
-will grant access only when the principal scopes match the note access scopes.
+service interfaces. The current vault service uses one local principal whose
+scopes come from `VAULT_SERVICE_AUTH_SCOPES`. Future callers, including AI
+agents, website renderers, and administrative tools, will operate as
+individually authenticated principals with scopes.
 
 ## Project Dependencies
 
@@ -93,7 +105,7 @@ To run the current sync worker, you need:
 - The name or ID of the remote vault to sync.
 - The end-to-end encryption password for the remote vault.
 
-To develop the sync component, you also need:
+To develop Canterbury or run the local vault service, you also need:
 
 - Go 1.24 or newer.
 - `golangci-lint` 2.11.4 or a compatible 2.x release.
@@ -175,6 +187,71 @@ This is the portable default. If you replace it with a host bind mount such as
 `./vault:/vault`, you must ensure the container user can write to that host
 directory.
 
+## Run The Vault Service
+
+The vault service reads from a local filesystem mirror of the vault. If you use
+the default Docker-managed `obsidian-vault` volume, that volume is not exposed as
+`./vault` on the host. For local service development, point
+`VAULT_SERVICE_ROOT` at a host-accessible mirror, or deliberately use a bind
+mount override such as `./vault:/vault` after accounting for host filesystem
+permissions.
+
+Copy the vault service example environment file:
+
+```bash
+cp .env.example .env
+```
+
+Configure the vault service values:
+
+```env
+VAULT_SERVICE_ROOT=./vault
+VAULT_SERVICE_AUTH_SCOPES=personal-agent
+VAULT_SERVICE_ADDR=127.0.0.1:50051
+```
+
+| Variable                    | Required | Description                                                                   |
+| --------------------------- | -------- | ----------------------------------------------------------------------------- |
+| `VAULT_SERVICE_ROOT`        | Yes      | Local filesystem path to the mirrored vault read by the Go vault service.     |
+| `VAULT_SERVICE_AUTH_SCOPES` | Yes      | Comma-separated principal scopes granted to the local vault service instance. |
+| `VAULT_SERVICE_ADDR`        | No       | Address for the Connect server. Defaults to `127.0.0.1:50051` when not set.   |
+
+The vault service loads `.env` from the repository root when present. Real
+environment variables take precedence over values in `.env`.
+
+Start the local service:
+
+```bash
+go run ./cmd/vault-service
+```
+
+The service exposes Connect/gRPC on the configured address. The current
+implemented vault RPC is:
+
+```text
+/canterbury.vault.v1.VaultService/ReadNote
+```
+
+Example request body:
+
+```json
+{
+	"ref": {
+		"path": "Projects/Canterbury.md"
+	}
+}
+```
+
+`ReadNote` returns the Markdown body without frontmatter in `note.content`.
+Parsed frontmatter is returned in `note.metadata.properties` after reserved
+access-policy fields are removed. YAML timestamp values are formatted as RFC
+3339 strings so they can be represented in `google.protobuf.Struct`.
+
+The local service currently uses the fixed principal scopes from
+`VAULT_SERVICE_AUTH_SCOPES`. It does not yet authenticate each request, emit
+audit records, or expose MCP tools, so keep it bound to a trusted local
+interface while it is in this development shape.
+
 ## Develop Canterbury
 
 Install repository formatting dependencies:
@@ -237,16 +314,20 @@ You can also run the sync component check directly:
 npm --prefix sync run check
 ```
 
-## Troubleshoot The Sync Worker
+## Troubleshoot
 
-| Problem                                                    | Cause                                                                        | Solution                                                                                                              |
-| ---------------------------------------------------------- | ---------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `SYNC_VAULT_NAME is required`                              | `sync/.env` is missing the vault name or ID.                                 | Set `SYNC_VAULT_NAME`.                                                                                                |
-| `SYNC_VAULT_PASSWORD is required`                          | `sync/.env` is missing the vault encryption password.                        | Set `SYNC_VAULT_PASSWORD`.                                                                                            |
-| `SYNC_OBSIDIAN_AUTH_TOKEN is required`                     | `sync/.env` is missing the Obsidian auth token.                              | Set `SYNC_OBSIDIAN_AUTH_TOKEN`.                                                                                       |
-| `Another sync instance is already running for this vault.` | Another sync process owns the vault lock, or the vault path is not writable. | Stop other sync clients for the same vault and confirm the container can write to `/vault`.                           |
-| The container exits after a sync failure.                  | Compose is configured with `restart: 'no'`.                                  | Inspect the logs with `docker compose logs obsidian-sync`, fix the configuration, then run `docker compose up` again. |
-| Files are hard to inspect on the host.                     | The default Docker volume stores the vault outside the repository.           | Use Docker volume tooling to inspect it, or deliberately configure a bind mount for local development.                |
+| Problem                                                        | Cause                                                                         | Solution                                                                                                              |
+| -------------------------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `SYNC_VAULT_NAME is required`                                  | `sync/.env` is missing the vault name or ID.                                  | Set `SYNC_VAULT_NAME`.                                                                                                |
+| `SYNC_VAULT_PASSWORD is required`                              | `sync/.env` is missing the vault encryption password.                         | Set `SYNC_VAULT_PASSWORD`.                                                                                            |
+| `SYNC_OBSIDIAN_AUTH_TOKEN is required`                         | `sync/.env` is missing the Obsidian auth token.                               | Set `SYNC_OBSIDIAN_AUTH_TOKEN`.                                                                                       |
+| `environment variable "VAULT_SERVICE_ROOT" is required`        | `.env` or the shell environment is missing the vault service root path.       | Set `VAULT_SERVICE_ROOT` to the mirrored vault path.                                                                  |
+| `environment variable "VAULT_SERVICE_AUTH_SCOPES" is required` | `.env` or the shell environment is missing principal scopes for local access. | Set `VAULT_SERVICE_AUTH_SCOPES` to a comma-separated scope list such as `personal-agent`.                             |
+| `permission denied; check your authorization scopes`           | The note does not declare a scope granted to the local vault service.         | Add a matching `access.scopes` value to the note or update `VAULT_SERVICE_AUTH_SCOPES` for local development.         |
+| `search notes is not implemented`                              | The Connect `SearchNotes` RPC exists in the proto but has no handler yet.     | Use `ReadNote` for current local testing.                                                                             |
+| `Another sync instance is already running for this vault.`     | Another sync process owns the vault lock, or the vault path is not writable.  | Stop other sync clients for the same vault and confirm the container can write to `/vault`.                           |
+| The container exits after a sync failure.                      | Compose is configured with `restart: 'no'`.                                   | Inspect the logs with `docker compose logs obsidian-sync`, fix the configuration, then run `docker compose up` again. |
+| Files are hard to inspect on the host.                         | The default Docker volume stores the vault outside the repository.            | Use Docker volume tooling to inspect it, or deliberately configure a bind mount for local development.                |
 
 ## Roadmap
 

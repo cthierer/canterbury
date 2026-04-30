@@ -1,9 +1,10 @@
 # Canterbury Architecture
 
 Canterbury is planned as a controlled service layer between AI agents or other
-integrations and an Obsidian vault. The sync worker is currently the only
-implemented runtime component. The Go package structure described here is the
-intended shape for the next service components as they are added.
+integrations and an Obsidian vault. The sync worker and an initial local
+`ReadNote` vault service are currently implemented. The Go package structure
+described here is still the intended shape for service components as they are
+added.
 
 ## Package Boundaries
 
@@ -40,6 +41,9 @@ internal/
       log.go
 
   interfaces/
+    connectrpc/
+      vault_service.go
+
     mcp/
       tools.go
       read_note.go
@@ -52,7 +56,8 @@ internal/
 ```
 
 Not every directory exists yet. Create packages only when there is implemented
-behavior to put in them.
+behavior to put in them. The current external interface is Connect/gRPC;
+dedicated MCP and REST interfaces remain planned.
 
 ## Dependency Direction
 
@@ -68,8 +73,8 @@ cmd        -> app + adapters + interfaces
 - `app` implements use cases and coordinates policy, audit, and repositories.
 - `adapters` implements ports using external systems such as the vault
   filesystem mirror or an audit store.
-- `interfaces` adapts external protocols such as MCP or REST to application use
-  cases.
+- `interfaces` adapts external protocols such as Connect/gRPC, MCP, or REST to
+  application use cases.
 - `cmd` wires concrete implementations together for an executable.
 
 Domain packages must not import application, adapter, or interface
@@ -96,7 +101,7 @@ Markdown note reads and direct filesystem search. It should continue to:
 
 - read only Markdown notes through normalized vault-relative paths;
 - reject traversal, absolute paths, hidden/system paths, and symlink escapes;
-- parse YAML frontmatter and Markdown body content when metadata parsing lands;
+- parse YAML frontmatter and Markdown body content;
 - remain replaceable by a future SQLite-backed index implementation.
 
 Direct filesystem search currently uses offset-based pagination over each live,
@@ -107,14 +112,15 @@ this with stronger cursor semantics.
 
 ## Future Layers
 
-`internal/app/vault` should become the home for read and search use cases. This
-layer will eventually compose the vault repository with policy and audit
-services.
+`internal/app/vault` is the home for read and search use cases. It currently
+composes the vault repository with scope-based authorization. It will eventually
+also compose audit services.
 
 `internal/adapters/audit` should hold append-only audit log implementations.
 Future write operations must not commit successfully without an independent
 audit record.
 
-`internal/interfaces/mcp` and `internal/interfaces/rest` should expose protocol
-adapters only. They should translate requests into application use cases rather
-than reading vault files directly.
+`internal/interfaces/connectrpc`, future `internal/interfaces/mcp`, and future
+`internal/interfaces/rest` should expose protocol adapters only. They should
+translate requests into application use cases rather than reading vault files
+directly.

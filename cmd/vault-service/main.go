@@ -3,10 +3,12 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,7 +18,12 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/cthierer/canterbury/gen/go/canterbury/vault/v1/vaultv1connect"
+	"github.com/cthierer/canterbury/internal/adapters/vaultfs"
+	"github.com/cthierer/canterbury/internal/app/auth"
+	vaultapp "github.com/cthierer/canterbury/internal/app/vault"
+	vaultdomain "github.com/cthierer/canterbury/internal/domain/vault"
 	vaultconnect "github.com/cthierer/canterbury/internal/interfaces/connectrpc"
+	"github.com/joho/godotenv"
 )
 
 const (
@@ -24,6 +31,8 @@ const (
 	shutdownGracePeriod    = 10 * time.Second
 	readHeaderTimeout      = 5 * time.Second
 	vaultServiceAddressEnv = "VAULT_SERVICE_ADDR"
+	vaultServiceRoot       = "VAULT_SERVICE_ROOT"
+	vaultServiceScopes     = "VAULT_SERVICE_AUTH_SCOPES"
 )
 
 func main() {
@@ -37,10 +46,43 @@ func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	address := configValue(vaultServiceAddressEnv, defaultAddress)
-	mux := http.NewServeMux()
+	if err := loadLocalEnv(); err != nil {
+		return err
+	}
 
-	vaultService := vaultconnect.NewVaultServiceHandler()
+	mux := http.NewServeMux()
+	address := configValue(vaultServiceAddressEnv, defaultAddress)
+
+	vaultRoot, err := requiredConfigValue(vaultServiceRoot)
+	if err != nil {
+		return fmt.Errorf("read vault configuration: %w", err)
+	}
+
+	authScopesStr, err := requiredConfigValue(vaultServiceScopes)
+	if err != nil {
+		return fmt.Errorf("read auth configuration: %w", err)
+	}
+
+	authScopes, err := toScopes(authScopesStr)
+	if err != nil {
+		return fmt.Errorf("parse auth scopes: %w", err)
+	}
+
+	vaultRepository, err := vaultfs.NewRepository(vaultRoot)
+	if err != nil {
+		return fmt.Errorf("initialize vault repository: %w", err)
+	}
+
+	vaultApplication, err := vaultapp.NewService(vaultRepository, auth.Principal{Scopes: authScopes})
+	if err != nil {
+		return fmt.Errorf("initialize vault application service: %w", err)
+	}
+
+	vaultService, err := vaultconnect.NewVaultServiceHandler(vaultApplication)
+	if err != nil {
+		return fmt.Errorf("initialize vault connect service: %w", err)
+	}
+
 	vaultPath, vaultHandler := vaultv1connect.NewVaultServiceHandler(vaultService)
 	mux.Handle(vaultPath, vaultHandler)
 
@@ -92,4 +134,46 @@ func configValue(name string, fallback string) string {
 	}
 
 	return value
+}
+
+func loadLocalEnv() error {
+	if err := godotenv.Load(".env"); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("load dotenv configuration: %w", err)
+	}
+
+	return nil
+}
+
+func requiredConfigValue(name string) (string, error) {
+	value := configValue(name, "")
+	if value == "" {
+		return "", fmt.Errorf("environment variable %q is required", name)
+	}
+
+	return value, nil
+}
+
+func toScopes(scopesStr string) ([]vaultdomain.Scope, error) {
+	scopes := strings.Split(scopesStr, ",")
+	parsed := make([]vaultdomain.Scope, 0, len(scopes))
+
+	for _, scope := range scopes {
+		trimmed := strings.TrimSpace(scope)
+		if trimmed == "" {
+			continue
+		}
+
+		parsedScope, err := vaultdomain.NewScope(trimmed)
+		if err != nil {
+			return nil, fmt.Errorf("parse scope %q: %w", scope, err)
+		}
+
+		parsed = append(parsed, parsedScope)
+	}
+
+	if len(parsed) < 1 {
+		return nil, errors.New("must have at least 1 scope")
+	}
+
+	return parsed, nil
 }
