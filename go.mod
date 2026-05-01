@@ -1,6 +1,6 @@
 module github.com/cthierer/canterbury
 
-go 1.24.0
+go 1.26.0
 
 require (
 	connectrpc.com/connect v1.19.1

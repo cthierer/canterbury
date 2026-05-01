@@ -106,7 +106,7 @@ To run the current sync worker, you need:
 
 To develop Canterbury or run the local vault service, you also need:
 
-- Go 1.24 or newer.
+- Go 1.26 or newer.
 - `golangci-lint` 2.11.4 or a compatible 2.x release.
 - Node.js 24 or a compatible version supported by the sync dependencies.
 - npm.
