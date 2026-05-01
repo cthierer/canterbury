@@ -110,6 +110,19 @@ To develop Canterbury or run the local vault service, you also need:
 - `golangci-lint` 2.11.4 or a compatible 2.x release.
 - Node.js 24 or a compatible version supported by the sync dependencies.
 - npm.
+- Make.
+
+Install development dependencies and tools:
+
+```bash
+make setup
+```
+
+Run the full repository check:
+
+```bash
+make check
+```
 
 ## Install Canterbury
 
