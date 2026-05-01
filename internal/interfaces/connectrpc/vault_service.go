@@ -2,11 +2,8 @@ package connectrpc
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
-	"connectrpc.com/connect"
-	vaultv1 "github.com/cthierer/canterbury/gen/go/canterbury/vault/v1"
 	"github.com/cthierer/canterbury/gen/go/canterbury/vault/v1/vaultv1connect"
 	domainvault "github.com/cthierer/canterbury/internal/domain/vault"
 )
@@ -30,12 +27,4 @@ func NewVaultServiceHandler(vault VaultApplication) (*VaultServiceHandler, error
 	}
 
 	return &VaultServiceHandler{vault: vault}, nil
-}
-
-// SearchNotes handles search notes requests.
-func (h *VaultServiceHandler) SearchNotes(
-	context.Context,
-	*connect.Request[vaultv1.SearchNotesRequest],
-) (*connect.Response[vaultv1.SearchNotesResponse], error) {
-	return nil, connect.NewError(connect.CodeUnimplemented, errors.New("search notes is not implemented"))
 }

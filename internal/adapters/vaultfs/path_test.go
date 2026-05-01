@@ -11,7 +11,7 @@ import (
 
 func TestJoinVaultPath(t *testing.T) {
 	t.Run("returns resolved file path inside root", func(t *testing.T) {
-		root := t.TempDir()
+		root := resolvedTempDir(t)
 		notePath := mustNotePath(t, "Notes/Hello.md")
 		expectedPath := writeNoteFile(t, root, notePath, "hello")
 
@@ -26,7 +26,7 @@ func TestJoinVaultPath(t *testing.T) {
 	})
 
 	t.Run("maps missing file to domain not found", func(t *testing.T) {
-		root := t.TempDir()
+		root := resolvedTempDir(t)
 		notePath := mustNotePath(t, "Missing.md")
 
 		_, err := joinVaultPath(root, notePath)
@@ -36,7 +36,7 @@ func TestJoinVaultPath(t *testing.T) {
 	})
 
 	t.Run("rejects symlink escape", func(t *testing.T) {
-		root := t.TempDir()
+		root := resolvedTempDir(t)
 		outside := filepath.Join(t.TempDir(), "Outside.md")
 		if err := os.WriteFile(outside, []byte("secret"), 0o600); err != nil {
 			t.Fatalf("write outside file: %v", err)
@@ -52,6 +52,17 @@ func TestJoinVaultPath(t *testing.T) {
 			t.Fatalf("got error %v, want %v", err, vault.ErrInvalidNotePath)
 		}
 	})
+}
+
+func resolvedTempDir(t *testing.T) string {
+	t.Helper()
+
+	root, err := filepath.EvalSymlinks(t.TempDir())
+	if err != nil {
+		t.Fatalf("resolve temp dir: %v", err)
+	}
+
+	return root
 }
 
 func TestIsWithinRoot(t *testing.T) {

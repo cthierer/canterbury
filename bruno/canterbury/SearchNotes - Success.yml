@@ -1,0 +1,12 @@
+info:
+  name: SearchNotes - Success
+  type: grpc
+  seq: 2
+
+grpc:
+  url: "{{BaseURI}}"
+  method: /canterbury.vault.v1.VaultService/SearchNotes
+  methodType: unary
+  protoFilePath: ../../api/canterbury/vault/v1/vault.proto
+  message: "{}"
+  auth: inherit

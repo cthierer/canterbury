@@ -21,10 +21,15 @@ message ReadNoteResponse {
 }
 
 message SearchNotesRequest {
+  // Query contains the text expression to match.
   SearchNotesQuery query = 1;
+  // Filter narrows results by path and metadata.
   SearchNotesFilter filter = 2;
+  // Page size is bounded by the service default and maximum limits.
   int32 page_size = 3;
+  // Page token resumes a previous SearchNotes response.
   string page_token = 4;
+  // Sort selects deterministic result ordering.
   SearchSort sort = 5;
 }
 
@@ -34,13 +39,18 @@ message SearchNotesResponse {
 }
 
 message SearchNotesQuery {
+  // Text is treated as one trimmed search term. It is not comma-separated.
   string text = 1;
 }
 
 message SearchNotesFilter {
+  // Include only notes below one of these vault-relative path prefixes.
   repeated string include_path_prefixes = 1;
+  // Exclude notes below any of these vault-relative path prefixes.
   repeated string exclude_path_prefixes = 2;
+  // Require every listed tag.
   repeated string all_tags = 3;
+  // Require at least one listed tag.
   repeated string any_tags = 4;
 }
 

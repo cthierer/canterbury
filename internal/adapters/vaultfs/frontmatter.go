@@ -109,13 +109,14 @@ func buildAccess(scopeStrings []string) (vault.ResourceAccess, error) {
 func buildTags(tagStrings []string) []vault.Tag {
 	tags := make([]vault.Tag, 0, len(tagStrings))
 
-	for _, tag := range tagStrings {
-		trimmed := strings.TrimSpace(tag)
+	for _, value := range tagStrings {
+		trimmed := strings.TrimSpace(value)
 		if trimmed == "" {
 			continue
 		}
 
-		tags = append(tags, vault.Tag(trimmed))
+		tag, _ := vault.NewTag(trimmed)
+		tags = append(tags, tag)
 	}
 
 	return tags

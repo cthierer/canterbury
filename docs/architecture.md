@@ -2,9 +2,9 @@
 
 Canterbury is planned as a controlled service layer between AI agents or other
 integrations and an Obsidian vault. The sync worker and an initial local
-`ReadNote` vault service are currently implemented. The Go package structure
-described here is still the intended shape for service components as they are
-added.
+vault service with `ReadNote` and `SearchNotes` RPCs are currently implemented.
+The Go package structure described here is still the intended shape for service
+components as they are added.
 
 ## Package Boundaries
 
@@ -43,6 +43,8 @@ internal/
   interfaces/
     connectrpc/
       vault_service.go
+      read_note.go
+      search_notes.go
 
     mcp/
       tools.go
@@ -109,6 +111,11 @@ sorted scan. These cursors are best-effort continuation markers rather than
 stable snapshot tokens, so callers may see skipped or repeated results if the
 vault changes between page requests. A future indexed repository can replace
 this with stronger cursor semantics.
+
+The current Connect `SearchNotes` adapter treats `query.text` as one trimmed
+search term and does not parse comma-separated term syntax. The filesystem
+repository matches text case-insensitively against note content, applies path
+and tag filters, and returns snippets without full note content.
 
 ## Future Layers
 

@@ -161,12 +161,17 @@ func (x *ReadNoteResponse) GetNote() *Note {
 }
 
 type SearchNotesRequest struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Query         *SearchNotesQuery      `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
-	Filter        *SearchNotesFilter     `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
-	PageSize      int32                  `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
-	PageToken     string                 `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
-	Sort          SearchSort             `protobuf:"varint,5,opt,name=sort,proto3,enum=canterbury.vault.v1.SearchSort" json:"sort,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Query contains the text expression to match.
+	Query *SearchNotesQuery `protobuf:"bytes,1,opt,name=query,proto3" json:"query,omitempty"`
+	// Filter narrows results by path and metadata.
+	Filter *SearchNotesFilter `protobuf:"bytes,2,opt,name=filter,proto3" json:"filter,omitempty"`
+	// Page size is bounded by the service default and maximum limits.
+	PageSize int32 `protobuf:"varint,3,opt,name=page_size,json=pageSize,proto3" json:"page_size,omitempty"`
+	// Page token resumes a previous SearchNotes response.
+	PageToken string `protobuf:"bytes,4,opt,name=page_token,json=pageToken,proto3" json:"page_token,omitempty"`
+	// Sort selects deterministic result ordering.
+	Sort          SearchSort `protobuf:"varint,5,opt,name=sort,proto3,enum=canterbury.vault.v1.SearchSort" json:"sort,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -289,8 +294,9 @@ func (x *SearchNotesResponse) GetNextPageToken() string {
 }
 
 type SearchNotesQuery struct {
-	state         protoimpl.MessageState `protogen:"open.v1"`
-	Text          string                 `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Text is treated as one trimmed search term. It is not comma-separated.
+	Text          string `protobuf:"bytes,1,opt,name=text,proto3" json:"text,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -333,13 +339,17 @@ func (x *SearchNotesQuery) GetText() string {
 }
 
 type SearchNotesFilter struct {
-	state               protoimpl.MessageState `protogen:"open.v1"`
-	IncludePathPrefixes []string               `protobuf:"bytes,1,rep,name=include_path_prefixes,json=includePathPrefixes,proto3" json:"include_path_prefixes,omitempty"`
-	ExcludePathPrefixes []string               `protobuf:"bytes,2,rep,name=exclude_path_prefixes,json=excludePathPrefixes,proto3" json:"exclude_path_prefixes,omitempty"`
-	AllTags             []string               `protobuf:"bytes,3,rep,name=all_tags,json=allTags,proto3" json:"all_tags,omitempty"`
-	AnyTags             []string               `protobuf:"bytes,4,rep,name=any_tags,json=anyTags,proto3" json:"any_tags,omitempty"`
-	unknownFields       protoimpl.UnknownFields
-	sizeCache           protoimpl.SizeCache
+	state protoimpl.MessageState `protogen:"open.v1"`
+	// Include only notes below one of these vault-relative path prefixes.
+	IncludePathPrefixes []string `protobuf:"bytes,1,rep,name=include_path_prefixes,json=includePathPrefixes,proto3" json:"include_path_prefixes,omitempty"`
+	// Exclude notes below any of these vault-relative path prefixes.
+	ExcludePathPrefixes []string `protobuf:"bytes,2,rep,name=exclude_path_prefixes,json=excludePathPrefixes,proto3" json:"exclude_path_prefixes,omitempty"`
+	// Require every listed tag.
+	AllTags []string `protobuf:"bytes,3,rep,name=all_tags,json=allTags,proto3" json:"all_tags,omitempty"`
+	// Require at least one listed tag.
+	AnyTags       []string `protobuf:"bytes,4,rep,name=any_tags,json=anyTags,proto3" json:"any_tags,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
 }
 
 func (x *SearchNotesFilter) Reset() {

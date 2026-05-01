@@ -6,7 +6,7 @@ read, search, and eventually write vault content while enforcing explicit access
 policies and recording an independent audit trail of every interaction.
 
 This repository currently implements a Dockerized sync worker and an early local
-Go vault service with a scoped `ReadNote` RPC.
+Go vault service with scoped `ReadNote` and `SearchNotes` RPCs.
 
 ## Project Status
 
@@ -15,16 +15,15 @@ Canterbury is in early development. The current implementation includes:
 - A Node-based sync worker container.
 - `obsidian-headless` integration.
 - Docker Compose configuration.
-- A local Go vault service that reads scoped Markdown notes from a filesystem
-  vault mirror.
+- A local Go vault service that reads and searches scoped Markdown notes from a
+  filesystem vault mirror.
 - Scope-based authorization using note-declared access scopes and a fixed local
   principal configured by environment variable.
-- Connect/gRPC health, reflection, and `ReadNote` handlers.
+- Connect/gRPC health, reflection, `ReadNote`, and `SearchNotes` handlers.
 - Repository formatting, test, and linting tooling.
 
 Planned or incomplete components include:
 
-- Search RPC support in the Connect service.
 - MCP-compatible tools for AI agents.
 - Independent audit logging.
 - Indexing and plugin-style vault operations.
@@ -71,8 +70,8 @@ The intended system has several components:
   events and content.
 
 The current repository implements the sync worker and the first vault service
-read path. Search, MCP tools, indexing, and audit logging are not implemented
-yet.
+read and search paths. MCP tools, indexing, and audit logging are not
+implemented yet.
 
 See [Canterbury Architecture](docs/architecture.md) for the planned Go package
 structure and dependency boundaries.
@@ -226,13 +225,14 @@ go run ./cmd/vault-service
 ```
 
 The service exposes Connect/gRPC on the configured address. The current
-implemented vault RPC is:
+implemented vault RPCs are:
 
 ```text
 /canterbury.vault.v1.VaultService/ReadNote
+/canterbury.vault.v1.VaultService/SearchNotes
 ```
 
-Example request body:
+Example `ReadNote` request body:
 
 ```json
 {
@@ -246,6 +246,32 @@ Example request body:
 Parsed frontmatter is returned in `note.metadata.properties` after reserved
 access-policy fields are removed. YAML timestamp values are formatted as RFC
 3339 strings so they can be represented in `google.protobuf.Struct`.
+
+Example `SearchNotes` request body:
+
+```json
+{
+	"query": {
+		"text": "Canterbury"
+	},
+	"filter": {
+		"includePathPrefixes": ["Projects"],
+		"excludePathPrefixes": ["Projects/Archive"],
+		"allTags": ["project"],
+		"anyTags": ["ai", "notes"]
+	},
+	"pageSize": 25,
+	"sort": "SEARCH_SORT_PATH_ASC"
+}
+```
+
+`SearchNotes` returns matching note references, metadata, snippets, and a
+`nextPageToken` when another page is available. The current text query is a
+single trimmed search term matched case-insensitively against note content. It
+is not parsed as comma-separated syntax. Path prefix filters use vault-relative
+paths. `all_tags` requires every listed tag, while `any_tags` requires at least
+one listed tag when present. Supported sort orders are
+`SEARCH_SORT_PATH_ASC` and `SEARCH_SORT_MODIFIED_DESC`.
 
 The local service currently uses the fixed principal scopes from
 `VAULT_SERVICE_AUTH_SCOPES`. It does not yet authenticate each request, emit
@@ -324,7 +350,7 @@ npm --prefix sync run check
 | `environment variable "VAULT_SERVICE_ROOT" is required`        | `.env` or the shell environment is missing the vault service root path.       | Set `VAULT_SERVICE_ROOT` to the mirrored vault path.                                                                  |
 | `environment variable "VAULT_SERVICE_AUTH_SCOPES" is required` | `.env` or the shell environment is missing principal scopes for local access. | Set `VAULT_SERVICE_AUTH_SCOPES` to a comma-separated scope list such as `personal-agent`.                             |
 | `permission denied; check your authorization scopes`           | The note does not declare a scope granted to the local vault service.         | Add a matching `access.scopes` value to the note or update `VAULT_SERVICE_AUTH_SCOPES` for local development.         |
-| `search notes is not implemented`                              | The Connect `SearchNotes` RPC exists in the proto but has no handler yet.     | Use `ReadNote` for current local testing.                                                                             |
+| `invalid search query`                                         | A search request contains an unsupported sort or invalid page token.          | Use `SEARCH_SORT_PATH_ASC` or `SEARCH_SORT_MODIFIED_DESC`, and only reuse `nextPageToken` values returned by search.  |
 | `Another sync instance is already running for this vault.`     | Another sync process owns the vault lock, or the vault path is not writable.  | Stop other sync clients for the same vault and confirm the container can write to `/vault`.                           |
 | The container exits after a sync failure.                      | Compose is configured with `restart: 'no'`.                                   | Inspect the logs with `docker compose logs obsidian-sync`, fix the configuration, then run `docker compose up` again. |
 | Files are hard to inspect on the host.                         | The default Docker volume stores the vault outside the repository.            | Use Docker volume tooling to inspect it, or deliberately configure a bind mount for local development.                |

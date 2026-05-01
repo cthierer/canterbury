@@ -30,9 +30,9 @@ func (h *VaultServiceHandler) ReadNote(
 
 	note, err := h.vault.ReadNote(ctx, notePath)
 	if err != nil {
-		slog.ErrorContext(ctx, "encountered an error reading vault note", "err", err)
-		err = classifyReadNoteError(req.Msg, err)
-		return nil, err
+		connectErr := classifyReadNoteError(req.Msg, err)
+		logConnectError(ctx, "encountered an error reading vault note", err, connectErr)
+		return nil, connectErr
 	}
 
 	noteMsg, err := noteToProto(note)
@@ -61,17 +61,5 @@ func classifyReadNoteError(req *vaultv1.ReadNoteRequest, err error) error {
 		return connect.NewError(connect.CodeInvalidArgument, fmt.Errorf("invalid note path %q", req.Ref.Path))
 	}
 
-	if errors.Is(err, domainvault.ErrVaultUnavailable) {
-		return connect.NewError(connect.CodeUnavailable, fmt.Errorf("vault cannot be accessed; try again later"))
-	}
-
-	if errors.Is(err, context.Canceled) {
-		return connect.NewError(connect.CodeCanceled, fmt.Errorf("request canceled"))
-	}
-
-	if errors.Is(err, context.DeadlineExceeded) {
-		return connect.NewError(connect.CodeDeadlineExceeded, fmt.Errorf("deadline exceeded"))
-	}
-
-	return connect.NewError(connect.CodeUnknown, fmt.Errorf("an unknown error occurred"))
+	return classifySystemError(err)
 }

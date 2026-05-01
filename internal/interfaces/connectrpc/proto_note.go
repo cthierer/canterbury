@@ -11,26 +11,41 @@ import (
 )
 
 func noteToProto(note domainvault.Note) (*vaultv1.Note, error) {
-	propertiesProto, err := frontmatterToProto(note.Metadata.Frontmatter)
+	ref := noteRefToProto(note.Ref)
+
+	metadata, err := noteMetadataToProto(note.Metadata)
+	if err != nil {
+		return nil, fmt.Errorf("build metadata proto: %w", err)
+	}
+
+	noteMsg := &vaultv1.Note{
+		Ref:      ref,
+		Metadata: metadata,
+		Content:  note.Content,
+	}
+
+	return noteMsg, nil
+}
+
+func noteRefToProto(ref domainvault.NoteRef) *vaultv1.NoteRef {
+	return &vaultv1.NoteRef{
+		Path: ref.Path.String(),
+	}
+}
+
+func noteMetadataToProto(metadata domainvault.NoteMetadata) (*vaultv1.NoteMetadata, error) {
+	propertiesProto, err := frontmatterToProto(metadata.Frontmatter)
 	if err != nil {
 		return nil, fmt.Errorf("convert frontmatter to properties: %w", err)
 	}
 
-	noteMsg := &vaultv1.Note{
-		Ref: &vaultv1.NoteRef{
-			Path: note.Ref.Path.String(),
-		},
-		Metadata: &vaultv1.NoteMetadata{
-			Title:      note.Metadata.Title,
-			Tags:       noteTagsToProto(note.Metadata.Tags),
-			SizeBytes:  note.Metadata.SizeBytes,
-			ModifiedAt: timestampToProto(note.Metadata.ModifiedAt),
-			Properties: propertiesProto,
-		},
-		Content: note.Content,
-	}
-
-	return noteMsg, nil
+	return &vaultv1.NoteMetadata{
+		Title:      metadata.Title,
+		Tags:       noteTagsToProto(metadata.Tags),
+		SizeBytes:  metadata.SizeBytes,
+		ModifiedAt: timestampToProto(metadata.ModifiedAt),
+		Properties: propertiesProto,
+	}, nil
 }
 
 func noteTagsToProto(tags []domainvault.Tag) []string {

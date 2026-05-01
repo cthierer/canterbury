@@ -37,6 +37,15 @@ type NoteMetadata struct {
 	HasFrontmatter bool
 }
 
+func NewTag(value string) (Tag, error) {
+	normalized := strings.TrimSpace(value)
+	if normalized == "" {
+		return "", ErrInvalidTag
+	}
+
+	return Tag(normalized), nil
+}
+
 // NewNotePath validates and normalizes a vault-relative Markdown path.
 func NewNotePath(value string) (NotePath, error) {
 	normalized := strings.TrimSpace(value)
