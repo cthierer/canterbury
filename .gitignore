@@ -1,6 +1,7 @@
 .env
 .cache/
 .codex
+.vscode
 node_modules/
 /vault/
 sync/.env
