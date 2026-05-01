@@ -10,7 +10,7 @@ import (
 
 func TestNoteToProto(t *testing.T) {
 	t.Run("converts note", func(t *testing.T) {
-		notePath := mustNotePath(t, "Projects/Canterbury.md")
+		notePath := mustNotePath(t)
 		modifiedAt := time.Date(2026, 4, 29, 14, 30, 15, 123, time.UTC)
 
 		note, err := noteToProto(domainvault.Note{
@@ -72,7 +72,7 @@ func TestNoteToProto(t *testing.T) {
 	})
 
 	t.Run("returns frontmatter conversion error", func(t *testing.T) {
-		notePath := mustNotePath(t, "Projects/Canterbury.md")
+		notePath := mustNotePath(t)
 
 		_, err := noteToProto(domainvault.Note{
 			Ref: domainvault.NoteRef{Path: notePath},

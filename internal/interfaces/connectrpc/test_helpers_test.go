@@ -48,8 +48,10 @@ func mustHandler(t *testing.T, vault VaultApplication) *VaultServiceHandler {
 	return handler
 }
 
-func mustNotePath(t *testing.T, value string) domainvault.NotePath {
+func mustNotePath(t *testing.T) domainvault.NotePath {
 	t.Helper()
+
+	const value = "Projects/Canterbury.md"
 
 	notePath, err := domainvault.NewNotePath(value)
 	if err != nil {

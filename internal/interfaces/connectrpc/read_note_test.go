@@ -14,7 +14,7 @@ import (
 
 func TestVaultServiceHandlerReadNote(t *testing.T) {
 	t.Run("returns note", func(t *testing.T) {
-		notePath := mustNotePath(t, "Projects/Canterbury.md")
+		notePath := mustNotePath(t)
 		handler := mustHandler(t, &fakeVaultApplication{
 			readNoteFunc: func(_ context.Context, path domainvault.NotePath) (domainvault.Note, error) {
 				if path != notePath {
@@ -124,7 +124,7 @@ func TestVaultServiceHandlerReadNote(t *testing.T) {
 	}
 
 	t.Run("maps note conversion failure", func(t *testing.T) {
-		notePath := mustNotePath(t, "Projects/Canterbury.md")
+		notePath := mustNotePath(t)
 		handler := mustHandler(t, &fakeVaultApplication{
 			readNoteFunc: func(context.Context, domainvault.NotePath) (domainvault.Note, error) {
 				return domainvault.Note{

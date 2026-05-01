@@ -55,9 +55,7 @@ func classifySearchNotesError(_ *vaultv1.SearchNotesRequest, err error) error {
 func protoToSearchNotesQuery(msg *vaultv1.SearchNotesRequest) (domainvault.SearchNotesQuery, error) {
 	notesQuery := domainvault.SearchNotesQuery{}
 
-	if err := applyQuery(&notesQuery, msg.Query); err != nil {
-		return notesQuery, fmt.Errorf("apply query: %w", err)
-	}
+	applyQuery(&notesQuery, msg.Query)
 
 	if err := applyFilter(&notesQuery, msg.Filter); err != nil {
 		return notesQuery, fmt.Errorf("apply filter: %w", err)
@@ -73,7 +71,7 @@ func protoToSearchNotesQuery(msg *vaultv1.SearchNotesRequest) (domainvault.Searc
 	return notesQuery, nil
 }
 
-func applyQuery(query *domainvault.SearchNotesQuery, queryMsg *vaultv1.SearchNotesQuery) (err error) {
+func applyQuery(query *domainvault.SearchNotesQuery, queryMsg *vaultv1.SearchNotesQuery) {
 	if queryMsg == nil {
 		return
 	}
@@ -84,8 +82,6 @@ func applyQuery(query *domainvault.SearchNotesQuery, queryMsg *vaultv1.SearchNot
 	}
 
 	query.Text = domainvault.TextSearch{Terms: []string{term}}
-
-	return
 }
 
 func applyFilter(query *domainvault.SearchNotesQuery, filterMsg *vaultv1.SearchNotesFilter) (err error) {

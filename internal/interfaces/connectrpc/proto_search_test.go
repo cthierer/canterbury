@@ -10,7 +10,7 @@ import (
 
 func TestSearchResultsToProto(t *testing.T) {
 	t.Run("converts search results", func(t *testing.T) {
-		notePath := mustNotePath(t, "Projects/Canterbury.md")
+		notePath := mustNotePath(t)
 		modifiedAt := time.Date(2026, 4, 30, 14, 30, 0, 0, time.UTC)
 
 		results, err := searchResultsToProto([]domainvault.SearchNoteResult{
@@ -70,7 +70,7 @@ func TestSearchResultsToProto(t *testing.T) {
 	})
 
 	t.Run("returns metadata conversion error", func(t *testing.T) {
-		notePath := mustNotePath(t, "Projects/Canterbury.md")
+		notePath := mustNotePath(t)
 
 		_, err := searchResultsToProto([]domainvault.SearchNoteResult{
 			{

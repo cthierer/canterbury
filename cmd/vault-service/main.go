@@ -1,3 +1,4 @@
+// Package main starts the Canterbury vault service.
 package main
 
 import (

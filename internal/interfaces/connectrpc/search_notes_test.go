@@ -15,7 +15,7 @@ import (
 
 func TestVaultServiceHandlerSearchNotes(t *testing.T) {
 	t.Run("returns search results", func(t *testing.T) {
-		notePath := mustNotePath(t, "Projects/Canterbury.md")
+		notePath := mustNotePath(t)
 		modifiedAt := time.Date(2026, 4, 30, 14, 30, 0, 0, time.UTC)
 		var gotQuery domainvault.SearchNotesQuery
 
@@ -245,7 +245,7 @@ func TestVaultServiceHandlerSearchNotes(t *testing.T) {
 	}
 
 	t.Run("maps result conversion failure", func(t *testing.T) {
-		notePath := mustNotePath(t, "Projects/Canterbury.md")
+		notePath := mustNotePath(t)
 		handler := mustHandler(t, &fakeVaultApplication{
 			searchNotesFunc: func(context.Context, domainvault.SearchNotesQuery) (domainvault.SearchNotesPage, error) {
 				return domainvault.SearchNotesPage{

@@ -10,6 +10,7 @@ import (
 
 var _ vaultv1connect.VaultServiceHandler = (*VaultServiceHandler)(nil)
 
+// VaultApplication defines vault use cases required by the Connect handler.
 type VaultApplication interface {
 	ReadNote(ctx context.Context, path domainvault.NotePath) (domainvault.Note, error)
 	SearchNotes(ctx context.Context, query domainvault.SearchNotesQuery) (domainvault.SearchNotesPage, error)

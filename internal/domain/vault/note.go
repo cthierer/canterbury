@@ -37,6 +37,7 @@ type NoteMetadata struct {
 	HasFrontmatter bool
 }
 
+// NewTag validates and normalizes an Obsidian-style note tag.
 func NewTag(value string) (Tag, error) {
 	normalized := strings.TrimSpace(value)
 	if normalized == "" {
