@@ -12,10 +12,10 @@ vault through a controlled service layer. The long-term goal is to allow agents
 to read, search, and eventually write vault content while enforcing explicit
 access policies and recording an independent audit trail outside the vault.
 
-The repository currently implements only the first component: the **sync
-worker**.
+The repository currently implements the **sync worker** and an initial local
+**vault service** with scoped read and search paths.
 
-## Current Implemented Component
+## Current Implemented Components
 
 The sync worker lives in `sync/` and:
 
@@ -37,12 +37,27 @@ Keep this as the portable default. Treat host bind mounts such as `./vault:/vaul
 as explicit local development overrides because they introduce host filesystem
 permission concerns.
 
+The vault service lives under `cmd/vault-service` and `internal/` and:
+
+- Reads Markdown notes from a local filesystem vault mirror.
+- Parses YAML frontmatter, note tags, and note-declared access scopes.
+- Exposes Connect/gRPC health, reflection, `ReadNote`, and `SearchNotes`.
+- Uses a fixed local principal configured by `VAULT_SERVICE_AUTH_SCOPES`.
+- Enforces default-deny access by requiring a matching note `access.scopes`
+  value.
+- Strips reserved access-policy frontmatter from returned note properties.
+
+The repository includes `sample-vault/` with small fake notes for local service
+testing and demos.
+
 ## Planned Architecture
 
 The broader system is expected to include:
 
 - **Sync worker**: trusted component with Obsidian credentials.
 - **Vault service**: Go service that exposes controlled access to vault data.
+  Initial read and search paths are implemented; authentication, audit
+  integration, write paths, and indexing remain incomplete.
 - **MCP tools**: AI-facing tool interface for querying vault data.
 - **Authorization and classification**: default-deny access based on
   note-declared access scopes and caller principal scopes.
@@ -58,7 +73,7 @@ repository.
 Maintain these assumptions:
 
 - The sync worker is trusted and has Obsidian account credentials.
-- Future vault services must not receive Obsidian account credentials.
+- Vault services must not receive Obsidian account credentials.
 - AI agents must not access vault files directly.
 - Access should be default deny.
 - Only notes declaring allowed `access.scopes` should become available through
@@ -92,19 +107,22 @@ Follow the repository formatting rules:
 For repository changes, run from the repository root:
 
 ```bash
-npm run check
+make check
 ```
 
 This runs:
 
 - `prettier --check`
+- `buf lint`
 - `gofmt` checks
-- `go test ./internal/...`
-- `golangci-lint run ./internal/...`
+- `go test ./cmd/... ./internal/... ./gen/go/...`
+- `golangci-lint run ./cmd/... ./internal/...`
 - `node --check sync.js`
 - `eslint .`
 
 Use root `npm run format` and sync `npm run lint:fix` when appropriate.
+`npm run check` is also available when the required local tools are already on
+`PATH`.
 
 ## Documentation Standards
 
@@ -129,6 +147,8 @@ When making changes:
 - Keep child process handling robust: use `close`, forward signals, and avoid
   leaking secrets in logs.
 - Do not add future architecture code before the design has settled.
+- Keep `sample-vault/` content small, fake, and useful for exercising current
+  read, search, tag, and authorization behavior.
 
 ## Commit Standards
 
@@ -157,6 +177,11 @@ clear order.
 - `README.md`: project overview, usage, and roadmap.
 - `Dockerfile.sync`: sync worker image.
 - `docker-compose.yml`: local sync worker deployment.
+- `.env.example`: local vault service demo configuration.
+- `sample-vault/`: fake notes for local service tests and demos.
+- `cmd/vault-service/main.go`: local vault service executable.
+- `internal/`: Go domain, application, adapter, and interface packages.
+- `bruno/canterbury/`: sample Connect/gRPC requests.
 - `package.json`: repository-level formatting and check orchestration.
 - `.prettierrc`: repository-wide Prettier config.
 - `.golangci.yml`: Go linting config.

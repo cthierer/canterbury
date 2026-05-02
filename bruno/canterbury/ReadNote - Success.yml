@@ -4,14 +4,14 @@ info:
   seq: 3
 
 grpc:
-  url: "{{BaseURI}}"
+  url: '{{BaseURI}}'
   method: /canterbury.vault.v1.VaultService/ReadNote
   methodType: unary
   protoFilePath: ../../api/canterbury/vault/v1/vault.proto
   message: |-
     {
       "ref": {
-        "path": "test.md"
+        "path": "Projects/Canterbury.md"
       }
     }
   auth: inherit

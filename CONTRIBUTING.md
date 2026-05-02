@@ -5,34 +5,33 @@ focused changes are especially valuable.
 
 ## Project Scope
 
-Canterbury currently implements only the sync worker in `sync/`. Planned
-components such as the vault service, MCP tools, authorization layer, audit
-system, and indexing layer should remain documented as planned architecture
-unless they exist in the repository.
+Canterbury currently implements a Dockerized sync worker in `sync/` and an
+initial local Go vault service with scoped `ReadNote` and `SearchNotes` RPCs.
+Planned components such as MCP tools, independent audit logging, write
+operations, and indexing should remain documented as planned architecture unless
+they exist in the repository.
 
 ## Development Setup
 
-Install repository formatting dependencies:
+The recommended setup path installs Node dependencies, Go modules, and
+project-local Go tools:
 
 ```bash
-npm install
-```
-
-Install Go linting tooling:
-
-```bash
-curl -sSfL https://golangci-lint.run/install.sh | sh -s -- -b "$(go env GOPATH)/bin" v2.11.4
-```
-
-Install sync worker dependencies:
-
-```bash
-npm --prefix sync install
+make setup
 ```
 
 Run all checks before submitting changes:
 
 ```bash
+make check
+```
+
+You can run lower-level commands directly when the required tools are already
+installed:
+
+```bash
+npm install
+npm --prefix sync install
 npm run check
 ```
 
@@ -87,6 +86,16 @@ changes into separate commits.
 - Keep child process handling robust: use `close`, forward shutdown signals,
   and avoid leaking secrets in logs.
 - Prefer explicit configuration errors and non-zero exit codes.
+
+## Vault Service Guidelines
+
+- Preserve default-deny access behavior. Notes without `access.scopes` should
+  not be exposed through controlled service interfaces.
+- Keep Obsidian account credentials isolated to the sync worker. The vault
+  service should read a filesystem mirror only.
+- Keep sample vault content small, fake, and useful for demonstrating read,
+  search, tag, and authorization behavior.
+- Do not add future architecture code before the design has settled.
 
 ## Documentation
 

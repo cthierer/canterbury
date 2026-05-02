@@ -4,9 +4,16 @@ info:
   seq: 2
 
 grpc:
-  url: "{{BaseURI}}"
+  url: '{{BaseURI}}'
   method: /canterbury.vault.v1.VaultService/SearchNotes
   methodType: unary
   protoFilePath: ../../api/canterbury/vault/v1/vault.proto
-  message: "{}"
+  message: |-
+    {
+      "query": {
+        "text": "Canterbury"
+      },
+      "pageSize": 10,
+      "sort": "SEARCH_SORT_PATH_ASC"
+    }
   auth: inherit

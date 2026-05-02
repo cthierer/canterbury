@@ -217,7 +217,7 @@ cp .env.example .env
 Configure the vault service values:
 
 ```env
-VAULT_SERVICE_ROOT=./vault
+VAULT_SERVICE_ROOT=./sample-vault
 VAULT_SERVICE_AUTH_SCOPES=personal-agent
 VAULT_SERVICE_ADDR=127.0.0.1:50051
 ```
@@ -227,6 +227,22 @@ VAULT_SERVICE_ADDR=127.0.0.1:50051
 | `VAULT_SERVICE_ROOT`        | Yes      | Local filesystem path to the mirrored vault read by the Go vault service.     |
 | `VAULT_SERVICE_AUTH_SCOPES` | Yes      | Comma-separated principal scopes granted to the local vault service instance. |
 | `VAULT_SERVICE_ADDR`        | No       | Address for the Connect server. Defaults to `127.0.0.1:50051` when not set.   |
+
+Use `./sample-vault` for a quick local demo. Point `VAULT_SERVICE_ROOT` at your
+own host-accessible vault mirror when testing with real synced content.
+
+The included sample vault contains a few fake notes for exercising the current
+read, search, tag, and authorization behavior:
+
+| Path                         | Access scopes                   | Demo use                                     |
+| ---------------------------- | ------------------------------- | -------------------------------------------- |
+| `Projects/Canterbury.md`     | `personal-agent`                | Basic `ReadNote` and `SearchNotes` success.  |
+| `Projects/Agent Research.md` | `personal-agent`                | Text and tag search over project notes.      |
+| `Public/Service Brief.md`    | `personal-agent`, `public-site` | Multiple-scope access checks.                |
+| `Private/Unscoped Draft.md`  | None                            | Default-deny and permission-denied behavior. |
+
+The Bruno collection in `bruno/canterbury` includes success requests that target
+the sample vault defaults.
 
 The vault service loads `.env` from the repository root when present. Real
 environment variables take precedence over values in `.env`.
@@ -293,6 +309,23 @@ interface while it is in this development shape.
 
 ## Develop Canterbury
 
+The recommended setup path installs repository dependencies and project-local
+Go tooling:
+
+```bash
+make setup
+```
+
+Run the full repository check through Make so the configured local toolchain is
+used:
+
+```bash
+make check
+```
+
+You can also run individual checks directly when you already have the required
+tools installed.
+
 Install repository formatting dependencies:
 
 ```bash
@@ -311,7 +344,7 @@ Install development dependencies for the sync component:
 npm --prefix sync install
 ```
 
-Run all checks:
+Run all npm-orchestrated checks:
 
 ```bash
 npm run check
@@ -360,7 +393,7 @@ npm --prefix sync run check
 | `SYNC_VAULT_NAME is required`                                  | `sync/.env` is missing the vault name or ID.                                  | Set `SYNC_VAULT_NAME`.                                                                                                |
 | `SYNC_VAULT_PASSWORD is required`                              | `sync/.env` is missing the vault encryption password.                         | Set `SYNC_VAULT_PASSWORD`.                                                                                            |
 | `SYNC_OBSIDIAN_AUTH_TOKEN is required`                         | `sync/.env` is missing the Obsidian auth token.                               | Set `SYNC_OBSIDIAN_AUTH_TOKEN`.                                                                                       |
-| `environment variable "VAULT_SERVICE_ROOT" is required`        | `.env` or the shell environment is missing the vault service root path.       | Set `VAULT_SERVICE_ROOT` to the mirrored vault path.                                                                  |
+| `environment variable "VAULT_SERVICE_ROOT" is required`        | `.env` or the shell environment is missing the vault service root path.       | Set `VAULT_SERVICE_ROOT` to `./sample-vault` for the demo or to your mirrored vault path.                             |
 | `environment variable "VAULT_SERVICE_AUTH_SCOPES" is required` | `.env` or the shell environment is missing principal scopes for local access. | Set `VAULT_SERVICE_AUTH_SCOPES` to a comma-separated scope list such as `personal-agent`.                             |
 | `permission denied; check your authorization scopes`           | The note does not declare a scope granted to the local vault service.         | Add a matching `access.scopes` value to the note or update `VAULT_SERVICE_AUTH_SCOPES` for local development.         |
 | `invalid search query`                                         | A search request contains an unsupported sort or invalid page token.          | Use `SEARCH_SORT_PATH_ASC` or `SEARCH_SORT_MODIFIED_DESC`, and only reuse `nextPageToken` values returned by search.  |
