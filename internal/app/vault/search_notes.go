@@ -9,13 +9,25 @@ import (
 
 // SearchNotes returns notes matching query within the configured principal scopes.
 func (s *Service) SearchNotes(ctx context.Context, query domain.SearchNotesQuery) (domain.SearchNotesPage, error) {
+	startTime := s.clock.Now()
+
 	query.Access = domain.AccessFilter{
 		ScopesAny: s.principal.Scopes,
 	}
 
 	page, err := s.repository.SearchNotes(ctx, query)
 	if err != nil {
+		auditErr := s.recordSearchNotesError(ctx, query, err, startTime)
+		if auditErr != nil {
+			return domain.SearchNotesPage{}, fmt.Errorf("record audit log error: %w", auditErr)
+		}
+
 		return domain.SearchNotesPage{}, fmt.Errorf("search notes: %w", err)
+	}
+
+	err = s.recordSearchNotesCompleted(ctx, query, page, startTime)
+	if err != nil {
+		return domain.SearchNotesPage{}, fmt.Errorf("record audit log search: %w", err)
 	}
 
 	for i, result := range page.Results {

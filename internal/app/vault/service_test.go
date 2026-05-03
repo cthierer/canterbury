@@ -140,6 +140,7 @@ func TestServiceReadNote(t *testing.T) {
 
 func TestServiceSearchNotes(t *testing.T) {
 	notePath := mustNotePath(t, "Projects/Canterbury.md")
+	auditLog := &fakeAuditLogger{}
 	var gotQuery domain.SearchNotesQuery
 	repository := &fakeRepository{
 		searchNotesFunc: func(_ context.Context, query domain.SearchNotesQuery) (domain.SearchNotesPage, error) {
@@ -157,7 +158,7 @@ func TestServiceSearchNotes(t *testing.T) {
 			}, nil
 		},
 	}
-	service := mustService(t, repository)
+	service := mustServiceWithAuditLog(t, repository, auditLog)
 	page, err := service.SearchNotes(context.Background(), domain.SearchNotesQuery{
 		Text: domain.TextSearch{
 			Terms: []string{"canterbury"},
@@ -190,6 +191,59 @@ func TestServiceSearchNotes(t *testing.T) {
 	}
 
 	assertPublicFrontmatter(t, page.Results[0].Metadata.Frontmatter)
+	assertRecordedEvent(t, auditLog, audit.EventTypeVaultSearchCompleted)
+	if auditLog.events[0].Outcome.Status != audit.OutcomeStatusSuccess {
+		t.Fatalf("got outcome status %q, want %q", auditLog.events[0].Outcome.Status, audit.OutcomeStatusSuccess)
+	}
+	if auditLog.events[0].Policy.Decision != audit.PolicyDecisionAllow {
+		t.Fatalf("got policy decision %q, want %q", auditLog.events[0].Policy.Decision, audit.PolicyDecisionAllow)
+	}
+}
+
+func TestServiceSearchNotesRecordsRepositoryFailure(t *testing.T) {
+	auditLog := &fakeAuditLogger{}
+	repository := &fakeRepository{
+		searchNotesFunc: func(context.Context, domain.SearchNotesQuery) (domain.SearchNotesPage, error) {
+			return domain.SearchNotesPage{}, domain.ErrInvalidSearch
+		},
+	}
+	service := mustServiceWithAuditLog(t, repository, auditLog)
+
+	_, err := service.SearchNotes(context.Background(), domain.SearchNotesQuery{
+		Sort: domain.SearchSort("unknown"),
+	})
+	if !errors.Is(err, domain.ErrInvalidSearch) {
+		t.Fatalf("got error %v, want %v", err, domain.ErrInvalidSearch)
+	}
+
+	assertRecordedEvent(t, auditLog, audit.EventTypeVaultSearchFailed)
+	if auditLog.events[0].Outcome.Code != audit.OutcomeCodeInvalidArgument {
+		t.Fatalf("got outcome code %q, want %q", auditLog.events[0].Outcome.Code, audit.OutcomeCodeInvalidArgument)
+	}
+}
+
+func TestServiceSearchNotesFailsClosedWhenAuditLoggingFails(t *testing.T) {
+	notePath := mustNotePath(t, "Projects/Canterbury.md")
+	auditErr := errors.New("audit write failed")
+	repository := &fakeRepository{
+		searchNotesFunc: func(context.Context, domain.SearchNotesQuery) (domain.SearchNotesPage, error) {
+			return domain.SearchNotesPage{
+				Results: []domain.SearchNoteResult{
+					{
+						Ref:      domain.NoteRef{Path: notePath, Title: "Canterbury"},
+						Metadata: noteWithAccess(notePath, []domain.Scope{"personal-agent"}).Metadata,
+						Snippet:  "Canterbury notes",
+					},
+				},
+			}, nil
+		},
+	}
+	service := mustServiceWithAuditLog(t, repository, &fakeAuditLogger{err: auditErr})
+
+	_, err := service.SearchNotes(context.Background(), domain.SearchNotesQuery{})
+	if !errors.Is(err, auditErr) {
+		t.Fatalf("got error %v, want %v", err, auditErr)
+	}
 }
 
 type fakeRepository struct {
@@ -214,12 +268,6 @@ func (r *fakeRepository) SearchNotes(
 	}
 
 	return r.searchNotesFunc(ctx, query)
-}
-
-func mustService(t *testing.T, repository domain.Repository) *appvault.Service {
-	t.Helper()
-
-	return mustServiceWithAuditLog(t, repository, &fakeAuditLogger{})
 }
 
 func mustServiceWithAuditLog(
