@@ -47,3 +47,15 @@ func (a ResourceAccess) AllowsAny(scopes []Scope) bool {
 
 	return false
 }
+
+// MatchedScopes returns the intersection of the current access policy with the given scopes.
+func (a ResourceAccess) MatchedScopes(scopes []Scope) []Scope {
+	matches := make([]Scope, 0, len(a.Scopes))
+	for _, scope := range scopes {
+		if a.HasScope(scope) {
+			matches = append(matches, scope)
+		}
+	}
+
+	return matches
+}

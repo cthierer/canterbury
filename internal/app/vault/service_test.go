@@ -8,26 +8,34 @@ import (
 
 	"github.com/cthierer/canterbury/internal/app/auth"
 	appvault "github.com/cthierer/canterbury/internal/app/vault"
+	"github.com/cthierer/canterbury/internal/domain/audit"
 	domain "github.com/cthierer/canterbury/internal/domain/vault"
 )
 
 func TestNewService(t *testing.T) {
 	t.Run("requires repository", func(t *testing.T) {
-		_, err := appvault.NewService(nil, testPrincipal())
+		_, err := appvault.NewService(nil, testPrincipal(), &fakeAuditLogger{})
 		if err == nil {
 			t.Fatal("expected error")
 		}
 	})
 
 	t.Run("requires principal scopes", func(t *testing.T) {
-		_, err := appvault.NewService(&fakeRepository{}, auth.Principal{})
+		_, err := appvault.NewService(&fakeRepository{}, auth.Principal{}, &fakeAuditLogger{})
+		if err == nil {
+			t.Fatal("expected error")
+		}
+	})
+
+	t.Run("requires audit log", func(t *testing.T) {
+		_, err := appvault.NewService(&fakeRepository{}, testPrincipal(), nil)
 		if err == nil {
 			t.Fatal("expected error")
 		}
 	})
 
 	t.Run("creates service", func(t *testing.T) {
-		service, err := appvault.NewService(&fakeRepository{}, testPrincipal())
+		service, err := appvault.NewService(&fakeRepository{}, testPrincipal(), &fakeAuditLogger{})
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -41,6 +49,7 @@ func TestNewService(t *testing.T) {
 func TestServiceReadNote(t *testing.T) {
 	t.Run("allows matching scope and sanitizes frontmatter", func(t *testing.T) {
 		notePath := mustNotePath(t, "Projects/Canterbury.md")
+		auditLog := &fakeAuditLogger{}
 		repository := &fakeRepository{
 			readNoteFunc: func(_ context.Context, path domain.NotePath) (domain.Note, error) {
 				if path != notePath {
@@ -50,7 +59,7 @@ func TestServiceReadNote(t *testing.T) {
 				return noteWithAccess(notePath, []domain.Scope{"personal-agent"}), nil
 			},
 		}
-		service := mustService(t, repository)
+		service := mustServiceWithAuditLog(t, repository, auditLog)
 
 		note, err := service.ReadNote(context.Background(), notePath)
 		if err != nil {
@@ -58,20 +67,73 @@ func TestServiceReadNote(t *testing.T) {
 		}
 
 		assertPublicFrontmatter(t, note.Metadata.Frontmatter)
+		assertRecordedEvent(t, auditLog, audit.EventTypeVaultReadAllowed)
+		if auditLog.events[0].Outcome.Status != audit.OutcomeStatusSuccess {
+			t.Fatalf("got outcome status %q, want %q", auditLog.events[0].Outcome.Status, audit.OutcomeStatusSuccess)
+		}
+		if auditLog.events[0].Policy.Decision != audit.PolicyDecisionAllow {
+			t.Fatalf("got policy decision %q, want %q", auditLog.events[0].Policy.Decision, audit.PolicyDecisionAllow)
+		}
 	})
 
 	t.Run("denies missing matching scope", func(t *testing.T) {
 		notePath := mustNotePath(t, "Projects/Private.md")
+		auditLog := &fakeAuditLogger{}
 		repository := &fakeRepository{
 			readNoteFunc: func(context.Context, domain.NotePath) (domain.Note, error) {
 				return noteWithAccess(notePath, []domain.Scope{"other-agent"}), nil
 			},
 		}
-		service := mustService(t, repository)
+		service := mustServiceWithAuditLog(t, repository, auditLog)
 
 		_, err := service.ReadNote(context.Background(), notePath)
 		if !errors.Is(err, appvault.ErrPermissionDenied) {
 			t.Fatalf("got error %v, want %v", err, appvault.ErrPermissionDenied)
+		}
+
+		assertRecordedEvent(t, auditLog, audit.EventTypeVaultReadDenied)
+		if auditLog.events[0].Outcome.Code != audit.OutcomeCodePermissionDenied {
+			t.Fatalf("got outcome code %q, want %q", auditLog.events[0].Outcome.Code, audit.OutcomeCodePermissionDenied)
+		}
+		if auditLog.events[0].Policy.Decision != audit.PolicyDecisionDeny {
+			t.Fatalf("got policy decision %q, want %q", auditLog.events[0].Policy.Decision, audit.PolicyDecisionDeny)
+		}
+	})
+
+	t.Run("records repository failure", func(t *testing.T) {
+		notePath := mustNotePath(t, "Projects/Missing.md")
+		auditLog := &fakeAuditLogger{}
+		repository := &fakeRepository{
+			readNoteFunc: func(context.Context, domain.NotePath) (domain.Note, error) {
+				return domain.Note{}, domain.ErrNoteNotFound
+			},
+		}
+		service := mustServiceWithAuditLog(t, repository, auditLog)
+
+		_, err := service.ReadNote(context.Background(), notePath)
+		if !errors.Is(err, domain.ErrNoteNotFound) {
+			t.Fatalf("got error %v, want %v", err, domain.ErrNoteNotFound)
+		}
+
+		assertRecordedEvent(t, auditLog, audit.EventTypeVaultReadFailed)
+		if auditLog.events[0].Outcome.Code != audit.OutcomeCodeNotFound {
+			t.Fatalf("got outcome code %q, want %q", auditLog.events[0].Outcome.Code, audit.OutcomeCodeNotFound)
+		}
+	})
+
+	t.Run("fails closed when audit logging fails", func(t *testing.T) {
+		notePath := mustNotePath(t, "Projects/Canterbury.md")
+		auditErr := errors.New("audit write failed")
+		repository := &fakeRepository{
+			readNoteFunc: func(context.Context, domain.NotePath) (domain.Note, error) {
+				return noteWithAccess(notePath, []domain.Scope{"personal-agent"}), nil
+			},
+		}
+		service := mustServiceWithAuditLog(t, repository, &fakeAuditLogger{err: auditErr})
+
+		_, err := service.ReadNote(context.Background(), notePath)
+		if !errors.Is(err, auditErr) {
+			t.Fatalf("got error %v, want %v", err, auditErr)
 		}
 	})
 }
@@ -157,12 +219,44 @@ func (r *fakeRepository) SearchNotes(
 func mustService(t *testing.T, repository domain.Repository) *appvault.Service {
 	t.Helper()
 
-	service, err := appvault.NewService(repository, testPrincipal())
+	return mustServiceWithAuditLog(t, repository, &fakeAuditLogger{})
+}
+
+func mustServiceWithAuditLog(
+	t *testing.T,
+	repository domain.Repository,
+	auditLog *fakeAuditLogger,
+) *appvault.Service {
+	t.Helper()
+
+	service, err := appvault.NewService(repository, testPrincipal(), auditLog)
 	if err != nil {
 		t.Fatalf("create service: %v", err)
 	}
 
 	return service
+}
+
+type fakeAuditLogger struct {
+	events []audit.Event
+	err    error
+}
+
+func (l *fakeAuditLogger) RecordEvent(_ context.Context, event audit.Event) error {
+	l.events = append(l.events, event)
+	return l.err
+}
+
+func assertRecordedEvent(t *testing.T, logger *fakeAuditLogger, eventType audit.EventType) {
+	t.Helper()
+
+	if len(logger.events) != 1 {
+		t.Fatalf("got %d audit events, want 1", len(logger.events))
+	}
+
+	if got := logger.events[0].Type(); got != eventType {
+		t.Fatalf("got event type %q, want %q", got, eventType)
+	}
 }
 
 func testPrincipal() auth.Principal {

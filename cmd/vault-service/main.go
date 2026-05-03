@@ -19,7 +19,9 @@ import (
 	"golang.org/x/net/http2/h2c"
 
 	"github.com/cthierer/canterbury/gen/go/canterbury/vault/v1/vaultv1connect"
+	"github.com/cthierer/canterbury/internal/adapters/auditfs"
 	"github.com/cthierer/canterbury/internal/adapters/vaultfs"
+	"github.com/cthierer/canterbury/internal/app/auditlog"
 	"github.com/cthierer/canterbury/internal/app/auth"
 	vaultapp "github.com/cthierer/canterbury/internal/app/vault"
 	vaultdomain "github.com/cthierer/canterbury/internal/domain/vault"
@@ -34,6 +36,7 @@ const (
 	vaultServiceAddressEnv = "VAULT_SERVICE_ADDR"
 	vaultServiceRoot       = "VAULT_SERVICE_ROOT"
 	vaultServiceScopes     = "VAULT_SERVICE_AUTH_SCOPES"
+	vaultServiceAuditRoot  = "VAULT_SERVICE_AUDIT_ROOT"
 )
 
 func main() {
@@ -74,7 +77,22 @@ func run() error {
 		return fmt.Errorf("initialize vault repository: %w", err)
 	}
 
-	vaultApplication, err := vaultapp.NewService(vaultRepository, auth.Principal{Scopes: authScopes})
+	auditRoot, err := requiredConfigValue(vaultServiceAuditRoot)
+	if err != nil {
+		return fmt.Errorf("read audit configuration: %w", err)
+	}
+
+	auditRecorder, err := auditfs.NewRecorder(auditRoot)
+	if err != nil {
+		return fmt.Errorf("initialize audit recorder: %w", err)
+	}
+
+	auditLog, err := auditlog.NewService(auditRecorder)
+	if err != nil {
+		return fmt.Errorf("initialize audit log: %w", err)
+	}
+
+	vaultApplication, err := vaultapp.NewService(vaultRepository, auth.Principal{Scopes: authScopes}, auditLog)
 	if err != nil {
 		return fmt.Errorf("initialize vault application service: %w", err)
 	}

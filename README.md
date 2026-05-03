@@ -69,8 +69,9 @@ The intended system has several components:
 - **Plugin and operation framework**: Runs extensible processing over vault
   events and content.
 
-The current repository implements the sync worker and the first vault service
-read and search paths. MCP tools, indexing, and audit logging are not
+The current repository implements the sync worker, the first vault service read
+and search paths, and filesystem JSONL audit logging for read attempts. MCP
+tools, indexing, request authentication, and search audit events are not
 implemented yet.
 
 See [Canterbury Architecture](docs/architecture.md) for the planned Go package
@@ -219,14 +220,16 @@ Configure the vault service values:
 ```env
 VAULT_SERVICE_ROOT=./sample-vault
 VAULT_SERVICE_AUTH_SCOPES=personal-agent
+VAULT_SERVICE_AUDIT_ROOT=./audit
 VAULT_SERVICE_ADDR=127.0.0.1:50051
 ```
 
-| Variable                    | Required | Description                                                                   |
-| --------------------------- | -------- | ----------------------------------------------------------------------------- |
-| `VAULT_SERVICE_ROOT`        | Yes      | Local filesystem path to the mirrored vault read by the Go vault service.     |
-| `VAULT_SERVICE_AUTH_SCOPES` | Yes      | Comma-separated principal scopes granted to the local vault service instance. |
-| `VAULT_SERVICE_ADDR`        | No       | Address for the Connect server. Defaults to `127.0.0.1:50051` when not set.   |
+| Variable                    | Required | Description                                                                                   |
+| --------------------------- | -------- | --------------------------------------------------------------------------------------------- |
+| `VAULT_SERVICE_ROOT`        | Yes      | Local filesystem path to the mirrored vault read by the Go vault service.                     |
+| `VAULT_SERVICE_AUTH_SCOPES` | Yes      | Comma-separated principal scopes granted to the local vault service instance.                 |
+| `VAULT_SERVICE_AUDIT_ROOT`  | Yes      | Local filesystem directory where date-rotated JSONL audit logs are written outside the vault. |
+| `VAULT_SERVICE_ADDR`        | No       | Address for the Connect server. Defaults to `127.0.0.1:50051` when not set.                   |
 
 Use `./sample-vault` for a quick local demo. Point `VAULT_SERVICE_ROOT` at your
 own host-accessible vault mirror when testing with real synced content.
@@ -303,9 +306,12 @@ one listed tag when present. Supported sort orders are
 `SEARCH_SORT_PATH_ASC` and `SEARCH_SORT_MODIFIED_DESC`.
 
 The local service currently uses the fixed principal scopes from
-`VAULT_SERVICE_AUTH_SCOPES`. It does not yet authenticate each request, emit
-audit records, or expose MCP tools, so keep it bound to a trusted local
-interface while it is in this development shape.
+`VAULT_SERVICE_AUTH_SCOPES`. Read attempts are written to date-rotated JSONL
+audit logs under `VAULT_SERVICE_AUDIT_ROOT`; if a required read audit record
+cannot be written, the service fails the read instead of returning data. The
+service does not yet authenticate each request, audit searches, or expose MCP
+tools, so keep it bound to a trusted local interface while it is in this
+development shape.
 
 ## Develop Canterbury
 
@@ -395,6 +401,7 @@ npm --prefix sync run check
 | `SYNC_OBSIDIAN_AUTH_TOKEN is required`                         | `sync/.env` is missing the Obsidian auth token.                               | Set `SYNC_OBSIDIAN_AUTH_TOKEN`.                                                                                       |
 | `environment variable "VAULT_SERVICE_ROOT" is required`        | `.env` or the shell environment is missing the vault service root path.       | Set `VAULT_SERVICE_ROOT` to `./sample-vault` for the demo or to your mirrored vault path.                             |
 | `environment variable "VAULT_SERVICE_AUTH_SCOPES" is required` | `.env` or the shell environment is missing principal scopes for local access. | Set `VAULT_SERVICE_AUTH_SCOPES` to a comma-separated scope list such as `personal-agent`.                             |
+| `environment variable "VAULT_SERVICE_AUDIT_ROOT" is required`  | `.env` or the shell environment is missing the audit log directory.           | Set `VAULT_SERVICE_AUDIT_ROOT` to an explicit directory outside the vault, such as `./audit`.                         |
 | `permission denied; check your authorization scopes`           | The note does not declare a scope granted to the local vault service.         | Add a matching `access.scopes` value to the note or update `VAULT_SERVICE_AUTH_SCOPES` for local development.         |
 | `invalid search query`                                         | A search request contains an unsupported sort or invalid page token.          | Use `SEARCH_SORT_PATH_ASC` or `SEARCH_SORT_MODIFIED_DESC`, and only reuse `nextPageToken` values returned by search.  |
 | `Another sync instance is already running for this vault.`     | Another sync process owns the vault lock, or the vault path is not writable.  | Stop other sync clients for the same vault and confirm the container can write to `/vault`.                           |

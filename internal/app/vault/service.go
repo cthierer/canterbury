@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/cthierer/canterbury/internal/app/auth"
+	"github.com/cthierer/canterbury/internal/app/clock"
 	domain "github.com/cthierer/canterbury/internal/domain/vault"
 )
 
@@ -11,10 +12,12 @@ import (
 type Service struct {
 	repository domain.Repository
 	principal  auth.Principal
+	auditLog   AuditLogger
+	clock      clock.Clock
 }
 
 // NewService creates a vault application service.
-func NewService(repository domain.Repository, principal auth.Principal) (*Service, error) {
+func NewService(repository domain.Repository, principal auth.Principal, auditLog AuditLogger) (*Service, error) {
 	if repository == nil {
 		return nil, fmt.Errorf("repository must not be nil")
 	}
@@ -23,5 +26,14 @@ func NewService(repository domain.Repository, principal auth.Principal) (*Servic
 		return nil, fmt.Errorf("principal must have at least 1 scope")
 	}
 
-	return &Service{repository: repository, principal: principal}, nil
+	if auditLog == nil {
+		return nil, fmt.Errorf("audit log must not be nil")
+	}
+
+	return &Service{
+		repository: repository,
+		principal:  principal,
+		auditLog:   auditLog,
+		clock:      clock.SystemClock{},
+	}, nil
 }

@@ -120,12 +120,12 @@ and tag filters, and returns snippets without full note content.
 ## Future Layers
 
 `internal/app/vault` is the home for read and search use cases. It currently
-composes the vault repository with scope-based authorization. It will eventually
-also compose audit services.
+composes the vault repository with scope-based authorization and records audit
+events for read attempts.
 
-`internal/adapters/audit` should hold append-only audit log implementations.
-Future write operations must not commit successfully without an independent
-audit record.
+`internal/adapters/auditfs` holds the filesystem append-only audit log
+implementation. Future write operations must not commit successfully without an
+independent audit record.
 
 `internal/interfaces/connectrpc`, future `internal/interfaces/mcp`, and future
 `internal/interfaces/rest` should expose protocol adapters only. They should
