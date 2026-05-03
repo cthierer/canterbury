@@ -13,10 +13,11 @@ func (r *Recorder) openAuditFile(forDate time.Time) (*os.File, error) {
 		fmt.Sprintf("%04d", forDate.Year()),
 		fmt.Sprintf("%02d", int(forDate.Month())),
 		fmt.Sprintf(
-			"%04d_%02d_%02d_audit.jsonl",
+			"%04d_%02d_%02d_%s_audit.jsonl",
 			forDate.Year(),
 			int(forDate.Month()),
 			forDate.Day(),
+			r.writerID,
 		),
 	)
 

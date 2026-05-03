@@ -43,9 +43,13 @@ V1 file behavior:
 - Append one complete record per line.
 - Write audit logs outside the vault, configured with an explicit root directory
   such as `VAULT_SERVICE_AUDIT_ROOT=./audit`.
-- Rotate logs by event date under the audit root. The filesystem recorder writes
-  daily JSONL files below year/month directories, for example
-  `./audit/2026/5/2026_May_3_auditlog.jsonl`.
+- Rotate logs by event date and writer ID under the audit root. The filesystem
+  recorder writes daily JSONL files below year/month directories, for example
+  `./audit/2026/05/2026_05_03_vault-service-a_audit.jsonl`.
+- Include a per-process audit writer ID in each filename so multiple service
+  instances sharing an audit root write separate files. Deployments may set
+  `VAULT_SERVICE_AUDIT_WRITER_ID`; otherwise the service generates one from
+  hostname, PID, and a short random suffix.
 - Use file permissions that prevent casual reads by other local users.
 - Open each daily file in append mode; do not rewrite existing records.
 - Treat short or partial writes as audit write failures.
@@ -334,6 +338,8 @@ runtime should fail closed if audit configuration is required but unavailable.
 - Audit write failure prevents returning note content or search results.
 - The JSONL log can be parsed line-by-line by tests.
 - Date-rotated JSONL files can be discovered under the configured audit root.
+- Multiple service instances sharing an audit root write separate per-writer
+  daily JSONL files.
 - `make check` passes.
 
 ## Open Follow-Ups

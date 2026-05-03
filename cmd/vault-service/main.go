@@ -37,6 +37,7 @@ const (
 	vaultServiceRoot       = "VAULT_SERVICE_ROOT"
 	vaultServiceScopes     = "VAULT_SERVICE_AUTH_SCOPES"
 	vaultServiceAuditRoot  = "VAULT_SERVICE_AUDIT_ROOT"
+	vaultServiceWriterID   = "VAULT_SERVICE_AUDIT_WRITER_ID"
 )
 
 func main() {
@@ -82,7 +83,13 @@ func run() error {
 		return fmt.Errorf("read audit configuration: %w", err)
 	}
 
-	auditRecorder, err := auditfs.NewRecorder(auditRoot)
+	auditOptions := []auditfs.RecorderOption{}
+	auditWriterID := configValue(vaultServiceWriterID, "")
+	if auditWriterID != "" {
+		auditOptions = append(auditOptions, auditfs.WithWriterID(auditWriterID))
+	}
+
+	auditRecorder, err := auditfs.NewRecorder(auditRoot, auditOptions...)
 	if err != nil {
 		return fmt.Errorf("initialize audit recorder: %w", err)
 	}

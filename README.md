@@ -221,15 +221,17 @@ Configure the vault service values:
 VAULT_SERVICE_ROOT=./sample-vault
 VAULT_SERVICE_AUTH_SCOPES=personal-agent
 VAULT_SERVICE_AUDIT_ROOT=./audit
+VAULT_SERVICE_AUDIT_WRITER_ID=
 VAULT_SERVICE_ADDR=127.0.0.1:50051
 ```
 
-| Variable                    | Required | Description                                                                                   |
-| --------------------------- | -------- | --------------------------------------------------------------------------------------------- |
-| `VAULT_SERVICE_ROOT`        | Yes      | Local filesystem path to the mirrored vault read by the Go vault service.                     |
-| `VAULT_SERVICE_AUTH_SCOPES` | Yes      | Comma-separated principal scopes granted to the local vault service instance.                 |
-| `VAULT_SERVICE_AUDIT_ROOT`  | Yes      | Local filesystem directory where date-rotated JSONL audit logs are written outside the vault. |
-| `VAULT_SERVICE_ADDR`        | No       | Address for the Connect server. Defaults to `127.0.0.1:50051` when not set.                   |
+| Variable                        | Required | Description                                                                                                                                           |
+| ------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VAULT_SERVICE_ROOT`            | Yes      | Local filesystem path to the mirrored vault read by the Go vault service.                                                                             |
+| `VAULT_SERVICE_AUTH_SCOPES`     | Yes      | Comma-separated principal scopes granted to the local vault service instance.                                                                         |
+| `VAULT_SERVICE_AUDIT_ROOT`      | Yes      | Local filesystem directory where date-rotated JSONL audit logs are written outside the vault.                                                         |
+| `VAULT_SERVICE_AUDIT_WRITER_ID` | No       | Optional filesystem-safe identifier included in audit filenames. When unset, the service generates one from hostname, PID, and a short random suffix. |
+| `VAULT_SERVICE_ADDR`            | No       | Address for the Connect server. Defaults to `127.0.0.1:50051` when not set.                                                                           |
 
 Use `./sample-vault` for a quick local demo. Point `VAULT_SERVICE_ROOT` at your
 own host-accessible vault mirror when testing with real synced content.
@@ -306,12 +308,13 @@ one listed tag when present. Supported sort orders are
 `SEARCH_SORT_PATH_ASC` and `SEARCH_SORT_MODIFIED_DESC`.
 
 The local service currently uses the fixed principal scopes from
-`VAULT_SERVICE_AUTH_SCOPES`. Read attempts are written to date-rotated JSONL
-audit logs under `VAULT_SERVICE_AUDIT_ROOT`; if a required read audit record
-cannot be written, the service fails the read instead of returning data. The
-service does not yet authenticate each request, audit searches, or expose MCP
-tools, so keep it bound to a trusted local interface while it is in this
-development shape.
+`VAULT_SERVICE_AUTH_SCOPES`. Read and search attempts are written to
+date-rotated JSONL audit logs under `VAULT_SERVICE_AUDIT_ROOT`; each service
+process writes its own per-day file using `VAULT_SERVICE_AUDIT_WRITER_ID` or a
+generated writer ID. If a required read or search audit record cannot be
+written, the service fails instead of returning data. The service does not yet
+authenticate each request or expose MCP tools, so keep it bound to a trusted
+local interface while it is in this development shape.
 
 ## Develop Canterbury
 

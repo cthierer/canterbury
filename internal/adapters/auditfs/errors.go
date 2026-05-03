@@ -6,6 +6,9 @@ var (
 	// ErrInvalidRoot indicates the audit log root is empty or otherwise invalid.
 	ErrInvalidRoot = errors.New("invalid audit log root")
 
+	// ErrInvalidWriterID indicates the audit log writer ID is empty or unsafe.
+	ErrInvalidWriterID = errors.New("invalid audit log writer ID")
+
 	// ErrEventMissingID indicates an event cannot be recorded without an ID.
 	ErrEventMissingID = errors.New("event must have an ID")
 
