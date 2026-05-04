@@ -3,6 +3,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -13,6 +14,7 @@ import (
 	"syscall"
 	"time"
 
+	"connectrpc.com/connect"
 	"connectrpc.com/grpchealth"
 	"connectrpc.com/grpcreflect"
 	"golang.org/x/net/http2"
@@ -30,14 +32,15 @@ import (
 )
 
 const (
-	defaultAddress         = "127.0.0.1:50051"
-	shutdownGracePeriod    = 10 * time.Second
-	readHeaderTimeout      = 5 * time.Second
-	vaultServiceAddressEnv = "VAULT_SERVICE_ADDR"
-	vaultServiceRoot       = "VAULT_SERVICE_ROOT"
-	vaultServiceScopes     = "VAULT_SERVICE_AUTH_SCOPES"
-	vaultServiceAuditRoot  = "VAULT_SERVICE_AUDIT_ROOT"
-	vaultServiceWriterID   = "VAULT_SERVICE_AUDIT_WRITER_ID"
+	defaultAddress           = "127.0.0.1:50051"
+	shutdownGracePeriod      = 10 * time.Second
+	readHeaderTimeout        = 5 * time.Second
+	vaultServiceAddressEnv   = "VAULT_SERVICE_ADDR"
+	vaultServiceRoot         = "VAULT_SERVICE_ROOT"
+	vaultServiceScopes       = "VAULT_SERVICE_AUTH_SCOPES"
+	vaultServiceAuditRoot    = "VAULT_SERVICE_AUDIT_ROOT"
+	vaultServiceAuditHMACKey = "VAULT_SERVICE_AUDIT_HMAC_KEY"
+	vaultServiceWriterID     = "VAULT_SERVICE_AUDIT_WRITER_ID"
 )
 
 func main() {
@@ -109,7 +112,22 @@ func run() error {
 		return fmt.Errorf("initialize vault connect service: %w", err)
 	}
 
-	vaultPath, vaultHandler := vaultv1connect.NewVaultServiceHandler(vaultService)
+	auditHMACKeyBase64, err := requiredConfigValue(vaultServiceAuditHMACKey)
+	if err != nil {
+		return fmt.Errorf("read audit hmac configuration: %w", err)
+	}
+
+	auditHMACKey, err := parseHMACKey(auditHMACKeyBase64)
+	if err != nil {
+		return fmt.Errorf("parse audit hmac key: %w", err)
+	}
+
+	auditInterceptor, err := vaultconnect.NewAuditContextInterceptor(auditHMACKey)
+	if err != nil {
+		return fmt.Errorf("initialize audit context interceptor: %w", err)
+	}
+
+	vaultPath, vaultHandler := vaultv1connect.NewVaultServiceHandler(vaultService, connect.WithInterceptors(auditInterceptor))
 	mux.Handle(vaultPath, vaultHandler)
 
 	checker := grpchealth.NewStaticChecker(vaultv1connect.VaultServiceName)
@@ -202,4 +220,22 @@ func toScopes(scopesStr string) ([]vaultdomain.Scope, error) {
 	}
 
 	return parsed, nil
+}
+
+func parseHMACKey(value string) ([]byte, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, fmt.Errorf("HMAC key is required")
+	}
+
+	key, err := base64.StdEncoding.DecodeString(value)
+	if err != nil {
+		return nil, fmt.Errorf("HMAC key must be base64 encoded: %w", err)
+	}
+
+	if len(key) < 32 {
+		return nil, fmt.Errorf("HMAC key must decode to at least 32 bytes")
+	}
+
+	return key, nil
 }

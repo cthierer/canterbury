@@ -5,60 +5,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/cthierer/canterbury/internal/app/idgen"
 )
-
-func TestEncodeULID(t *testing.T) {
-	t.Run("encodes zero timestamp and entropy", func(t *testing.T) {
-		got := encodeULID(time.UnixMilli(0), [10]byte{})
-
-		if got != "00000000000000000000000000" {
-			t.Fatalf("got %q, want zero ULID", got)
-		}
-	})
-
-	t.Run("encodes timestamp before entropy", func(t *testing.T) {
-		got := encodeULID(time.UnixMilli(1), [10]byte{})
-
-		if got != "00000000010000000000000000" {
-			t.Fatalf("got %q, want timestamp-first ULID", got)
-		}
-	})
-
-	t.Run("encodes max timestamp and entropy", func(t *testing.T) {
-		entropy := [10]byte{}
-		for i := range entropy {
-			entropy[i] = 0xff
-		}
-
-		got := encodeULID(time.UnixMilli(maxULIDTimestampMillis), entropy)
-
-		if got != "7ZZZZZZZZZZZZZZZZZZZZZZZZZ" {
-			t.Fatalf("got %q, want max ULID", got)
-		}
-	})
-
-	t.Run("encodes entropy across byte boundaries", func(t *testing.T) {
-		entropy := [10]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9}
-		timestamp := time.Date(2026, time.May, 3, 18, 25, 43, 123000000, time.UTC)
-
-		got := encodeULID(timestamp, entropy)
-
-		if got != "01KQQHDM6K000G40R40M30E209" {
-			t.Fatalf("got %q, want fixed ULID", got)
-		}
-	})
-}
-
-func TestEncodeULIDSortsByTimestamp(t *testing.T) {
-	entropy := [10]byte{1, 2, 3, 4, 5, 6, 7, 8, 9, 10}
-
-	earlier := encodeULID(time.UnixMilli(1000), entropy)
-	later := encodeULID(time.UnixMilli(1001), entropy)
-
-	if earlier >= later {
-		t.Fatalf("earlier ULID %q should sort before later ULID %q", earlier, later)
-	}
-}
 
 func TestULIDGeneratorNewEventID(t *testing.T) {
 	generator := ulidGenerator{}
@@ -75,7 +24,7 @@ func TestULIDGeneratorNewEventID(t *testing.T) {
 		}
 
 		for _, char := range got {
-			if !strings.ContainsRune(ulidEncoding, char) {
+			if !strings.ContainsRune("0123456789ABCDEFGHJKMNPQRSTVWXYZ", char) {
 				t.Fatalf("got invalid ULID character %q in %q", char, got)
 			}
 		}
@@ -84,16 +33,16 @@ func TestULIDGeneratorNewEventID(t *testing.T) {
 	t.Run("rejects timestamp before Unix epoch", func(t *testing.T) {
 		_, err := generator.NewEventID(time.UnixMilli(-1))
 
-		if !errors.Is(err, ErrInvalidTimestamp) {
-			t.Fatalf("got error %v, want %v", err, ErrInvalidTimestamp)
+		if !errors.Is(err, idgen.ErrInvalidTimestamp) {
+			t.Fatalf("got error %v, want %v", err, idgen.ErrInvalidTimestamp)
 		}
 	})
 
 	t.Run("rejects timestamp beyond ULID range", func(t *testing.T) {
-		_, err := generator.NewEventID(time.UnixMilli(maxULIDTimestampMillis + 1))
+		_, err := generator.NewEventID(time.UnixMilli(1 << 48))
 
-		if !errors.Is(err, ErrInvalidTimestamp) {
-			t.Fatalf("got error %v, want %v", err, ErrInvalidTimestamp)
+		if !errors.Is(err, idgen.ErrInvalidTimestamp) {
+			t.Fatalf("got error %v, want %v", err, idgen.ErrInvalidTimestamp)
 		}
 	})
 }
