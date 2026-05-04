@@ -45,7 +45,7 @@ func (s *Service) recordReadNoteAllowed(ctx context.Context, note domain.Note, s
 	event.Details = &readNoteEventAllowedDetails{
 		NoteRef:        noteRef{Path: note.Ref.Path.String(), Title: note.Ref.Title},
 		ResourceScopes: stringsFromScopes(note.Metadata.Access.Scopes),
-		ContentBytes:   len([]byte(note.Content)),
+		ContentBytes:   len(note.Content),
 	}
 
 	if err := s.recordEvent(ctx, event); err != nil {
