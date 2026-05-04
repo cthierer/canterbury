@@ -48,13 +48,13 @@ func NewRecorder(root string, opts ...RecorderOption) (*Recorder, error) {
 	root = strings.TrimSpace(root)
 
 	if root == "" {
-		return nil, fmt.Errorf("create audit log filesystem repository: %w", ErrInvalidRoot)
+		return nil, fmt.Errorf("create audit log filesystem recorder: %w", ErrInvalidRoot)
 	}
 
 	config := recorderConfig{}
 	for _, opt := range opts {
 		if err := opt(&config); err != nil {
-			return nil, fmt.Errorf("configure audit log filesystem repository: %w", err)
+			return nil, fmt.Errorf("configure audit log filesystem recorder: %w", err)
 		}
 	}
 

@@ -121,7 +121,7 @@ and tag filters, and returns snippets without full note content.
 
 `internal/app/vault` is the home for read and search use cases. It currently
 composes the vault repository with scope-based authorization and records audit
-events for read attempts.
+events for read and search attempts.
 
 `internal/adapters/auditfs` holds the filesystem append-only audit log
 implementation. Future write operations must not commit successfully without an
