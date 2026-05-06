@@ -6,3 +6,4 @@ node_modules/
 /vault/
 sync/.env
 sync/node_modules/
+/audit/
