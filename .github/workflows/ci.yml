@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+env:
+  # Set to a non-zero integer to enforce a minimum coverage percentage.
+  COVERAGE_THRESHOLD: 0
+
+jobs:
+  check:
+    name: Quality Checks
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Cache build artifacts
+        uses: actions/cache@v4
+        with:
+          path: .cache
+          key: ${{ runner.os }}-cache-${{ hashFiles('go.sum', 'package-lock.json', 'sync/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-cache-
+
+      - name: Install dependencies and tools
+        run: make setup
+
+      - name: Check formatting
+        run: npm run format:check
+
+      - name: Check Go formatting
+        run: npm run format:go:check
+
+      - name: Lint protobuf
+        run: npm run proto:lint
+
+      - name: Run Go tests with coverage
+        run: |
+          GOCACHE=$PWD/.cache/go-build GOMODCACHE=$PWD/.cache/go-mod \
+            go test -coverprofile=coverage.out ./cmd/... ./internal/... ./gen/go/...
+
+      - name: Report coverage
+        run: |
+          {
+            echo '## Test Coverage'
+            echo '```'
+            go tool cover -func=coverage.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Check coverage threshold
+        run: |
+          total=$(go tool cover -func=coverage.out | tail -1 | awk '{print $3}' | tr -d '%')
+          echo "Total coverage: ${total}%"
+          if [ "$COVERAGE_THRESHOLD" -eq 0 ]; then
+            echo "No minimum coverage threshold configured."
+          elif awk "BEGIN { exit ($total >= $COVERAGE_THRESHOLD) ? 0 : 1 }"; then
+            echo "Coverage ${total}% meets the configured minimum of ${COVERAGE_THRESHOLD}%."
+          else
+            echo "Coverage ${total}% is below the configured minimum of ${COVERAGE_THRESHOLD}%."
+            exit 1
+          fi
+
+      - name: Lint Go
+        run: make lint
+
+      - name: Lint JavaScript
+        run: npm --prefix sync run check:code
