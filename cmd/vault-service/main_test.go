@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/base64"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -118,6 +119,80 @@ func TestToScopes(t *testing.T) {
 			t.Fatalf("got error %q, want empty scopes message", err)
 		}
 	})
+}
+
+func TestParseHMACKey(t *testing.T) {
+	validKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+
+	t.Run("decodes base64 key", func(t *testing.T) {
+		got, err := parseHMACKey(" " + validKey + " ")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if len(got) != 32 {
+			t.Fatalf("got key length %d, want 32", len(got))
+		}
+	})
+
+	t.Run("rejects empty key", func(t *testing.T) {
+		_, err := parseHMACKey(" ")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+
+		if !strings.Contains(err.Error(), "HMAC key is required") {
+			t.Fatalf("got error %q, want required key message", err)
+		}
+	})
+
+	t.Run("rejects non-base64 key", func(t *testing.T) {
+		_, err := parseHMACKey("$(openssl rand -base64 32)")
+		if err == nil {
+			t.Fatal("expected error")
+		}
+
+		if !strings.Contains(err.Error(), "HMAC key must be base64 encoded") {
+			t.Fatalf("got error %q, want base64 message", err)
+		}
+	})
+
+	t.Run("rejects short key", func(t *testing.T) {
+		_, err := parseHMACKey(base64.StdEncoding.EncodeToString([]byte("short")))
+		if err == nil {
+			t.Fatal("expected error")
+		}
+
+		if !strings.Contains(err.Error(), "HMAC key must decode to at least 32 bytes") {
+			t.Fatalf("got error %q, want minimum length message", err)
+		}
+	})
+}
+
+func TestEnvExampleHMACKey(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("..", "..", ".env.example"))
+	if err != nil {
+		t.Fatalf("read .env.example: %v", err)
+	}
+
+	for _, line := range strings.Split(string(content), "\n") {
+		key, value, ok := strings.Cut(line, "=")
+		if !ok || key != vaultServiceAuditHMACKey {
+			continue
+		}
+
+		if strings.Contains(value, "$(") {
+			t.Fatalf("example HMAC key must be a literal value, got %q", value)
+		}
+
+		if _, err := parseHMACKey(value); err != nil {
+			t.Fatalf("example HMAC key is not valid: %v", err)
+		}
+
+		return
+	}
+
+	t.Fatalf(".env.example missing %s", vaultServiceAuditHMACKey)
 }
 
 func inTempDir(t *testing.T) string {

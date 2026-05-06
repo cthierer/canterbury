@@ -19,14 +19,16 @@ Canterbury is in early development. The current implementation includes:
   filesystem vault mirror.
 - Scope-based authorization using note-declared access scopes and a fixed local
   principal configured by environment variable.
+- Date-rotated JSONL audit logging for vault read and search attempts.
 - Connect/gRPC health, reflection, `ReadNote`, and `SearchNotes` handlers.
 - Repository formatting, test, and linting tooling.
 
 Planned or incomplete components include:
 
 - MCP-compatible tools for AI agents.
-- Independent audit logging.
 - Indexing and plugin-style vault operations.
+- Request authentication and principal resolution beyond the current local
+  fixed-principal configuration.
 
 ## Project Description
 
@@ -50,8 +52,8 @@ a server, NAS, homelab machine, or cloud container environment.
 
 The current vault service is useful for local development of controlled read
 access over a filesystem mirror of the vault. It is not yet a complete
-agent-facing service because request authentication, audit logging, and MCP
-tools are still planned.
+agent-facing service because request authentication and MCP tools are still
+planned.
 
 Canterbury is not a replacement for an Obsidian Sync subscription. The sync
 worker requires valid Obsidian Sync credentials and an existing remote vault.
@@ -69,9 +71,10 @@ The intended system has several components:
 - **Plugin and operation framework**: Runs extensible processing over vault
   events and content.
 
-The current repository implements the sync worker and the first vault service
-read and search paths. MCP tools, indexing, and audit logging are not
-implemented yet.
+The current repository implements the sync worker, the first vault service read
+and search paths, and filesystem JSONL audit logging for read and search
+attempts. MCP tools, indexing, and request authentication are not implemented
+yet.
 
 See [Canterbury Architecture](docs/architecture.md) for the planned Go package
 structure and dependency boundaries.
@@ -219,14 +222,32 @@ Configure the vault service values:
 ```env
 VAULT_SERVICE_ROOT=./sample-vault
 VAULT_SERVICE_AUTH_SCOPES=personal-agent
+VAULT_SERVICE_AUDIT_ROOT=./audit
+VAULT_SERVICE_AUDIT_WRITER_ID=
 VAULT_SERVICE_ADDR=127.0.0.1:50051
+VAULT_SERVICE_AUDIT_HMAC_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
 ```
 
-| Variable                    | Required | Description                                                                   |
-| --------------------------- | -------- | ----------------------------------------------------------------------------- |
-| `VAULT_SERVICE_ROOT`        | Yes      | Local filesystem path to the mirrored vault read by the Go vault service.     |
-| `VAULT_SERVICE_AUTH_SCOPES` | Yes      | Comma-separated principal scopes granted to the local vault service instance. |
-| `VAULT_SERVICE_ADDR`        | No       | Address for the Connect server. Defaults to `127.0.0.1:50051` when not set.   |
+| Variable                        | Required | Description                                                                                                                                           |
+| ------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VAULT_SERVICE_ROOT`            | Yes      | Local filesystem path to the mirrored vault read by the Go vault service.                                                                             |
+| `VAULT_SERVICE_AUTH_SCOPES`     | Yes      | Comma-separated principal scopes granted to the local vault service instance.                                                                         |
+| `VAULT_SERVICE_AUDIT_ROOT`      | Yes      | Local filesystem directory where date-rotated JSONL audit logs are written outside the vault.                                                         |
+| `VAULT_SERVICE_AUDIT_HMAC_KEY`  | Yes      | Base64-encoded HMAC key, at least 32 decoded bytes, used to hash remote client addresses before writing audit records.                                |
+| `VAULT_SERVICE_AUDIT_WRITER_ID` | No       | Optional filesystem-safe identifier included in audit filenames. When unset, the service generates one from hostname, PID, and a short random suffix. |
+| `VAULT_SERVICE_ADDR`            | No       | Address for the Connect server. Defaults to `127.0.0.1:50051` when not set.                                                                           |
+
+The `.env.example` file includes a development-only sample
+`VAULT_SERVICE_AUDIT_HMAC_KEY` so the local demo starts without shell expansion
+inside the dotenv file. Generate a real local or deployment key with:
+
+```bash
+openssl rand -base64 32
+```
+
+Keep this key stable if you need remote address hashes to remain comparable
+across service restarts. Rotate it when old audit address correlations should no
+longer be linkable.
 
 Use `./sample-vault` for a quick local demo. Point `VAULT_SERVICE_ROOT` at your
 own host-accessible vault mirror when testing with real synced content.
@@ -303,9 +324,19 @@ one listed tag when present. Supported sort orders are
 `SEARCH_SORT_PATH_ASC` and `SEARCH_SORT_MODIFIED_DESC`.
 
 The local service currently uses the fixed principal scopes from
-`VAULT_SERVICE_AUTH_SCOPES`. It does not yet authenticate each request, emit
-audit records, or expose MCP tools, so keep it bound to a trusted local
-interface while it is in this development shape.
+`VAULT_SERVICE_AUTH_SCOPES`. Read and search attempts are written to
+date-rotated JSONL audit logs under `VAULT_SERVICE_AUDIT_ROOT`; each service
+process writes its own per-day file using `VAULT_SERVICE_AUDIT_WRITER_ID` or a
+generated writer ID. If a required read or search audit record cannot be
+written, the service fails instead of returning data. The service does not yet
+authenticate each request or expose MCP tools, so keep it bound to a trusted
+local interface while it is in this development shape.
+
+The Connect vault handler attaches request-scoped audit metadata to each vault
+RPC. It accepts or generates an `X-Request-ID`, returns that request ID on
+success and error responses, extracts W3C `traceparent` trace IDs when present,
+and records a keyed HMAC-SHA256 hash of the remote client address rather than
+the raw address.
 
 ## Develop Canterbury
 
@@ -388,18 +419,21 @@ npm --prefix sync run check
 
 ## Troubleshoot
 
-| Problem                                                        | Cause                                                                         | Solution                                                                                                              |
-| -------------------------------------------------------------- | ----------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `SYNC_VAULT_NAME is required`                                  | `sync/.env` is missing the vault name or ID.                                  | Set `SYNC_VAULT_NAME`.                                                                                                |
-| `SYNC_VAULT_PASSWORD is required`                              | `sync/.env` is missing the vault encryption password.                         | Set `SYNC_VAULT_PASSWORD`.                                                                                            |
-| `SYNC_OBSIDIAN_AUTH_TOKEN is required`                         | `sync/.env` is missing the Obsidian auth token.                               | Set `SYNC_OBSIDIAN_AUTH_TOKEN`.                                                                                       |
-| `environment variable "VAULT_SERVICE_ROOT" is required`        | `.env` or the shell environment is missing the vault service root path.       | Set `VAULT_SERVICE_ROOT` to `./sample-vault` for the demo or to your mirrored vault path.                             |
-| `environment variable "VAULT_SERVICE_AUTH_SCOPES" is required` | `.env` or the shell environment is missing principal scopes for local access. | Set `VAULT_SERVICE_AUTH_SCOPES` to a comma-separated scope list such as `personal-agent`.                             |
-| `permission denied; check your authorization scopes`           | The note does not declare a scope granted to the local vault service.         | Add a matching `access.scopes` value to the note or update `VAULT_SERVICE_AUTH_SCOPES` for local development.         |
-| `invalid search query`                                         | A search request contains an unsupported sort or invalid page token.          | Use `SEARCH_SORT_PATH_ASC` or `SEARCH_SORT_MODIFIED_DESC`, and only reuse `nextPageToken` values returned by search.  |
-| `Another sync instance is already running for this vault.`     | Another sync process owns the vault lock, or the vault path is not writable.  | Stop other sync clients for the same vault and confirm the container can write to `/vault`.                           |
-| The container exits after a sync failure.                      | Compose is configured with `restart: 'no'`.                                   | Inspect the logs with `docker compose logs obsidian-sync`, fix the configuration, then run `docker compose up` again. |
-| Files are hard to inspect on the host.                         | The default Docker volume stores the vault outside the repository.            | Use Docker volume tooling to inspect it, or deliberately configure a bind mount for local development.                |
+| Problem                                                           | Cause                                                                           | Solution                                                                                                              |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
+| `SYNC_VAULT_NAME is required`                                     | `sync/.env` is missing the vault name or ID.                                    | Set `SYNC_VAULT_NAME`.                                                                                                |
+| `SYNC_VAULT_PASSWORD is required`                                 | `sync/.env` is missing the vault encryption password.                           | Set `SYNC_VAULT_PASSWORD`.                                                                                            |
+| `SYNC_OBSIDIAN_AUTH_TOKEN is required`                            | `sync/.env` is missing the Obsidian auth token.                                 | Set `SYNC_OBSIDIAN_AUTH_TOKEN`.                                                                                       |
+| `environment variable "VAULT_SERVICE_ROOT" is required`           | `.env` or the shell environment is missing the vault service root path.         | Set `VAULT_SERVICE_ROOT` to `./sample-vault` for the demo or to your mirrored vault path.                             |
+| `environment variable "VAULT_SERVICE_AUTH_SCOPES" is required`    | `.env` or the shell environment is missing principal scopes for local access.   | Set `VAULT_SERVICE_AUTH_SCOPES` to a comma-separated scope list such as `personal-agent`.                             |
+| `environment variable "VAULT_SERVICE_AUDIT_ROOT" is required`     | `.env` or the shell environment is missing the audit log directory.             | Set `VAULT_SERVICE_AUDIT_ROOT` to an explicit directory outside the vault, such as `./audit`.                         |
+| `environment variable "VAULT_SERVICE_AUDIT_HMAC_KEY" is required` | `.env` or the shell environment is missing the audit HMAC key.                  | Generate a literal key with `openssl rand -base64 32` and set `VAULT_SERVICE_AUDIT_HMAC_KEY`.                         |
+| `parse audit hmac key`                                            | `VAULT_SERVICE_AUDIT_HMAC_KEY` is not base64 or decodes to fewer than 32 bytes. | Replace it with a literal key generated by `openssl rand -base64 32`.                                                 |
+| `permission denied; check your authorization scopes`              | The note does not declare a scope granted to the local vault service.           | Add a matching `access.scopes` value to the note or update `VAULT_SERVICE_AUTH_SCOPES` for local development.         |
+| `invalid search query`                                            | A search request contains an unsupported sort or invalid page token.            | Use `SEARCH_SORT_PATH_ASC` or `SEARCH_SORT_MODIFIED_DESC`, and only reuse `nextPageToken` values returned by search.  |
+| `Another sync instance is already running for this vault.`        | Another sync process owns the vault lock, or the vault path is not writable.    | Stop other sync clients for the same vault and confirm the container can write to `/vault`.                           |
+| The container exits after a sync failure.                         | Compose is configured with `restart: 'no'`.                                     | Inspect the logs with `docker compose logs obsidian-sync`, fix the configuration, then run `docker compose up` again. |
+| Files are hard to inspect on the host.                            | The default Docker volume stores the vault outside the repository.              | Use Docker volume tooling to inspect it, or deliberately configure a bind mount for local development.                |
 
 ## Roadmap
 
