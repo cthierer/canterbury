@@ -48,8 +48,7 @@ func (interceptor *auditContextInterceptor) WrapUnary(next connect.UnaryFunc) co
 		traceID, _ := interceptor.traceID(req)
 		// TODO log debug about invalid trace ID, but don't quit
 
-		// simple placeholder until real auth is hooked up
-		// don't need to hook up real scopes, not worth the effort.
+		// Actor identity is stubbed until the authentication layer is implemented.
 		actor := audit.Actor{Issuer: "self"}
 
 		client, err := interceptor.client(req)
