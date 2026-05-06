@@ -17,6 +17,11 @@ cmd/
 
 internal/
   domain/
+    audit/
+      event.go
+      recorder.go
+      errors.go
+
     vault/
       access.go
       errors.go
@@ -25,26 +30,68 @@ internal/
       search.go
 
   app/
+    auditctx/
+      context.go
+
+    auditlog/
+      service.go
+      record_event.go
+      id_generator.go
+
+    auth/
+      principal.go
+
+    clock/
+      clock.go
+      system_clock.go
+
+    idgen/
+      ulid.go
+      errors.go
+
     vault/
       service.go
       read_note.go
       search_notes.go
+      audit.go
+      audit_read.go
+      audit_search.go
+      errors.go
+      note.go
 
   adapters/
+    auditfs/
+      recorder.go
+      jsonl.go
+      record.go
+      event_data.go
+      file.go
+      errors.go
+
     vaultfs/
       repository.go
       frontmatter.go
       path.go
+      read.go
       search.go
-
-    audit/
-      log.go
+      pagination.go
+      snippet.go
+      sort.go
+      match.go
+      errors.go
 
   interfaces/
     connectrpc/
       vault_service.go
       read_note.go
       search_notes.go
+      audit_context.go
+      correlation.go
+      error.go
+      log.go
+      proto_note.go
+      proto_search.go
+      proto_struct.go
 
     mcp/
       tools.go
@@ -71,12 +118,18 @@ adapters   -> domain
 cmd        -> app + adapters + interfaces
 ```
 
-- `domain` defines core vocabulary, invariants, errors, and ports.
+- `domain` defines core vocabulary, invariants, errors, and ports. Currently
+  includes `domain/vault` and `domain/audit`.
 - `app` implements use cases and coordinates policy, audit, and repositories.
+  Currently includes `app/vault` for read and search use cases, plus supporting
+  packages `app/auditctx`, `app/auditlog`, `app/auth`, `app/clock`, and
+  `app/idgen`.
 - `adapters` implements ports using external systems such as the vault
-  filesystem mirror or an audit store.
+  filesystem mirror or an audit store. Currently includes `adapters/vaultfs`
+  and `adapters/auditfs`.
 - `interfaces` adapts external protocols such as Connect/gRPC, MCP, or REST to
-  application use cases.
+  application use cases. Currently includes `interfaces/connectrpc`; dedicated
+  MCP and REST interfaces remain planned.
 - `cmd` wires concrete implementations together for an executable.
 
 Domain packages must not import application, adapter, or interface
@@ -94,6 +147,15 @@ packages.
 
 The vault domain exposes access metadata, but it does not authorize principals.
 Authorization belongs in an application/policy layer.
+
+## Audit Domain
+
+`internal/domain/audit` owns the audit event vocabulary:
+
+- audit event models with actor, action, resource, and outcome fields;
+- the `Recorder` port through which application use cases publish audit events.
+
+The audit domain does not implement recording; that belongs in `adapters/auditfs`.
 
 ## Filesystem Repository
 
@@ -117,17 +179,28 @@ search term and does not parse comma-separated term syntax. The filesystem
 repository matches text case-insensitively against note content, applies path
 and tag filters, and returns snippets without full note content.
 
-## Future Layers
+## Application Layer
 
 `internal/app/vault` is the home for read and search use cases. It currently
 composes the vault repository with scope-based authorization and records audit
 events for read and search attempts.
 
+Supporting packages in `internal/app/`:
+
+- `auditctx` carries the correlation and principal context used by audit event
+  recording.
+- `auditlog` implements audit event recording through the `domain/audit`
+  recorder port.
+- `auth` defines the principal model used for authorization.
+- `clock` provides a `Clock` abstraction and a system-time implementation used
+  for audit timestamps.
+- `idgen` provides unique ID generation (ULID) used for audit event IDs.
+
 `internal/adapters/auditfs` holds the filesystem append-only audit log
 implementation. Future write operations must not commit successfully without an
 independent audit record.
 
-`internal/interfaces/connectrpc`, future `internal/interfaces/mcp`, and future
-`internal/interfaces/rest` should expose protocol adapters only. They should
-translate requests into application use cases rather than reading vault files
-directly.
+`internal/interfaces/connectrpc` is the current external interface. Future
+`internal/interfaces/mcp` and future `internal/interfaces/rest` should expose
+protocol adapters only. They should translate requests into application use
+cases rather than reading vault files directly.
