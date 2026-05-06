@@ -7,81 +7,75 @@ import (
 )
 
 func TestResourceAccessMatchedScopes(t *testing.T) {
-	tests := []struct {
-		name   string
-		access vault.ResourceAccess
-		scopes []vault.Scope
-		want   []vault.Scope
-	}{
-		{
-			name:   "returns empty when resource has no scopes",
-			access: vault.ResourceAccess{Scopes: []vault.Scope{}},
-			scopes: []vault.Scope{"read"},
-			want:   []vault.Scope{},
-		},
-		{
-			name:   "returns empty when caller has no scopes",
-			access: vault.ResourceAccess{Scopes: []vault.Scope{"read"}},
-			scopes: []vault.Scope{},
-			want:   []vault.Scope{},
-		},
-		{
-			name:   "returns empty when there is no intersection",
-			access: vault.ResourceAccess{Scopes: []vault.Scope{"admin"}},
-			scopes: []vault.Scope{"read", "write"},
-			want:   []vault.Scope{},
-		},
-		{
-			name:   "returns matched scope",
-			access: vault.ResourceAccess{Scopes: []vault.Scope{"read", "admin"}},
-			scopes: []vault.Scope{"read"},
-			want:   []vault.Scope{"read"},
-		},
-		{
-			name:   "returns all matched scopes",
-			access: vault.ResourceAccess{Scopes: []vault.Scope{"read", "write", "admin"}},
-			scopes: []vault.Scope{"read", "write"},
-			want:   []vault.Scope{"read", "write"},
-		},
-		{
-			name:   "deduplicates when input scopes contains duplicates",
-			access: vault.ResourceAccess{Scopes: []vault.Scope{"read"}},
-			scopes: []vault.Scope{"read", "read", "read"},
-			want:   []vault.Scope{"read"},
-		},
-		{
-			name:   "deduplicates across multiple duplicated scopes",
-			access: vault.ResourceAccess{Scopes: []vault.Scope{"read", "write"}},
-			scopes: []vault.Scope{"read", "write", "read", "write"},
-			want:   []vault.Scope{"read", "write"},
-		},
-		{
-			name:   "preserves order of first occurrence",
-			access: vault.ResourceAccess{Scopes: []vault.Scope{"read", "write"}},
-			scopes: []vault.Scope{"write", "read", "write"},
-			want:   []vault.Scope{"write", "read"},
-		},
-		{
-			name:   "returns empty for nil caller scopes",
-			access: vault.ResourceAccess{Scopes: []vault.Scope{"read"}},
-			scopes: nil,
-			want:   []vault.Scope{},
-		},
-	}
+	t.Run("returns empty when resource has no scopes", func(t *testing.T) {
+		access := vault.ResourceAccess{Scopes: []vault.Scope{}}
+		got := access.MatchedScopes([]vault.Scope{"read"})
+		if len(got) != 0 {
+			t.Fatalf("got %v, want empty", got)
+		}
+	})
 
-	for _, test := range tests {
-		t.Run(test.name, func(t *testing.T) {
-			got := test.access.MatchedScopes(test.scopes)
+	t.Run("returns empty when caller has no scopes", func(t *testing.T) {
+		access := vault.ResourceAccess{Scopes: []vault.Scope{"read"}}
+		got := access.MatchedScopes([]vault.Scope{})
+		if len(got) != 0 {
+			t.Fatalf("got %v, want empty", got)
+		}
+	})
 
-			if len(got) != len(test.want) {
-				t.Fatalf("got %v (len %d), want %v (len %d)", got, len(got), test.want, len(test.want))
-			}
+	t.Run("returns empty when there is no intersection", func(t *testing.T) {
+		access := vault.ResourceAccess{Scopes: []vault.Scope{"admin"}}
+		got := access.MatchedScopes([]vault.Scope{"read", "write"})
+		if len(got) != 0 {
+			t.Fatalf("got %v, want empty", got)
+		}
+	})
 
-			for i := range got {
-				if got[i] != test.want[i] {
-					t.Fatalf("got[%d] = %q, want %q (full: got %v, want %v)", i, got[i], test.want[i], got, test.want)
-				}
-			}
-		})
-	}
+	t.Run("returns matched scope", func(t *testing.T) {
+		access := vault.ResourceAccess{Scopes: []vault.Scope{"read", "admin"}}
+		got := access.MatchedScopes([]vault.Scope{"read"})
+		if len(got) != 1 || got[0] != "read" {
+			t.Fatalf("got %v, want [read]", got)
+		}
+	})
+
+	t.Run("returns all matched scopes", func(t *testing.T) {
+		access := vault.ResourceAccess{Scopes: []vault.Scope{"read", "write", "admin"}}
+		got := access.MatchedScopes([]vault.Scope{"read", "write"})
+		if len(got) != 2 || got[0] != "read" || got[1] != "write" {
+			t.Fatalf("got %v, want [read write]", got)
+		}
+	})
+
+	t.Run("deduplicates when input scopes contains duplicates", func(t *testing.T) {
+		access := vault.ResourceAccess{Scopes: []vault.Scope{"read"}}
+		got := access.MatchedScopes([]vault.Scope{"read", "read", "read"})
+		if len(got) != 1 || got[0] != "read" {
+			t.Fatalf("got %v, want [read]", got)
+		}
+	})
+
+	t.Run("deduplicates across multiple duplicated scopes", func(t *testing.T) {
+		access := vault.ResourceAccess{Scopes: []vault.Scope{"read", "write"}}
+		got := access.MatchedScopes([]vault.Scope{"read", "write", "read", "write"})
+		if len(got) != 2 || got[0] != "read" || got[1] != "write" {
+			t.Fatalf("got %v, want [read write]", got)
+		}
+	})
+
+	t.Run("preserves order of first occurrence", func(t *testing.T) {
+		access := vault.ResourceAccess{Scopes: []vault.Scope{"read", "write"}}
+		got := access.MatchedScopes([]vault.Scope{"write", "read", "write"})
+		if len(got) != 2 || got[0] != "write" || got[1] != "read" {
+			t.Fatalf("got %v, want [write read]", got)
+		}
+	})
+
+	t.Run("returns empty for nil caller scopes", func(t *testing.T) {
+		access := vault.ResourceAccess{Scopes: []vault.Scope{"read"}}
+		got := access.MatchedScopes(nil)
+		if len(got) != 0 {
+			t.Fatalf("got %v, want empty", got)
+		}
+	})
 }
