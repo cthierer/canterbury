@@ -51,9 +51,9 @@ func (a ResourceAccess) AllowsAny(scopes []Scope) bool {
 // MatchedScopes returns the intersection of the current access policy with the given scopes.
 // Each scope appears at most once in the result, even if scopes contains duplicates.
 func (a ResourceAccess) MatchedScopes(scopes []Scope) []Scope {
-	cap := min(len(scopes), len(a.Scopes))
-	seen := make(map[Scope]struct{}, cap)
-	matches := make([]Scope, 0, cap)
+	capacity := min(len(scopes), len(a.Scopes))
+	seen := make(map[Scope]struct{}, capacity)
+	matches := make([]Scope, 0, capacity)
 
 	for _, scope := range scopes {
 		if _, ok := seen[scope]; !ok && a.HasScope(scope) {
