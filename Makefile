@@ -40,14 +40,15 @@ deps-go:
 
 .PHONY: tools
 tools: tools-go
+	@printf '%s\n' 'Project tools are installed.'
 
 .PHONY: tools-go
-tools-go: $(CACHE_DIR)/tools/golangci-lint-$(GOLANGCI_LINT_VERSION)
-
-$(CACHE_DIR)/tools/golangci-lint-$(GOLANGCI_LINT_VERSION):
-	mkdir -p $(BIN_DIR) $(CACHE_DIR)/tools
-	GOBIN=$(BIN_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
-	touch $@
+tools-go:
+	@mkdir -p $(BIN_DIR) $(CACHE_DIR)/tools
+	@if ! $(BIN_DIR)/golangci-lint version 2>/dev/null | grep -q '$(GOLANGCI_LINT_VERSION:v%=%)'; then \
+		printf '%s\n' 'Installing golangci-lint $(GOLANGCI_LINT_VERSION)...'; \
+		GOBIN=$(BIN_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
+	fi
 
 .PHONY: check
 check: tools-go
