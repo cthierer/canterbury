@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package canterbury.dev.v1;
+
+import "google/protobuf/timestamp.proto";
+
+option go_package = "github.com/cthierer/canterbury/gen/go/canterbury/dev/v1;devv1";
+
+// DevAuthService exposes local-only helpers for exercising Canterbury auth.
+service DevAuthService {
+  // MintToken creates a signed development JWT for a requested subject.
+  rpc MintToken(MintTokenRequest) returns (MintTokenResponse);
+}
+
+message MintTokenRequest {
+  TokenClaims claims = 1;
+  MintTokenOptions options = 2;
+}
+
+message MintTokenResponse {
+  MintedToken token = 1;
+}
+
+message TokenClaims {
+  // Subject becomes the JWT subject claim.
+  string subject = 1;
+  // Audiences become the JWT audience claim.
+  repeated string audiences = 2;
+  // Groups are optional identity evidence claims for development scenarios.
+  repeated string groups = 3;
+}
+
+message MintTokenOptions {
+  // TtlSeconds controls token lifetime. The service default is used when empty.
+  int64 ttl_seconds = 1;
+}
+
+message MintedToken {
+  // Jwt is the signed token. Send it as Authorization: Bearer <jwt>.
+  string jwt = 1;
+  string token_type = 2;
+  google.protobuf.Timestamp expires_at = 3;
+}
