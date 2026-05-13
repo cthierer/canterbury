@@ -1,10 +1,12 @@
 package devauthjwt
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/cthierer/canterbury/internal/domain/devauth"
 )
@@ -24,9 +26,10 @@ type payload struct {
 }
 
 // MintToken builds and signs a JWT for validated development auth claims.
-func (minter *Minter) MintToken(claims devauth.Claims, options devauth.MintOptions) (devauth.Token, error) {
-	issuedAt := options.IssuedAt
-	expiresAt := options.ExpiresAt
+func (minter *Minter) MintToken(ctx context.Context, claims devauth.Claims, issuedAt time.Time, expiresAt time.Time) (devauth.Token, error) {
+	if err := ctx.Err(); err != nil {
+		return devauth.Token{}, err
+	}
 
 	header := header{
 		Type:      "JWT",

@@ -6,7 +6,9 @@ read, search, and eventually write vault content while enforcing explicit access
 policies and recording an independent audit trail of every interaction.
 
 This repository currently implements a Dockerized sync worker and an early local
-Go vault service with scoped `ReadNote` and `SearchNotes` RPCs.
+Go vault service with scoped `ReadNote` and `SearchNotes` RPCs. It also
+contains the first development auth service scaffolding for local JWT minting
+work.
 
 ## Project Status
 
@@ -21,6 +23,8 @@ Canterbury is in early development. The current implementation includes:
   principal configured by environment variable.
 - Date-rotated JSONL audit logging for vault read and search attempts.
 - Connect/gRPC health, reflection, `ReadNote`, and `SearchNotes` handlers.
+- A development auth CLI skeleton that starts a local Connect/gRPC service for
+  future JWT minting support.
 - Repository formatting, test, and linting tooling.
 
 Planned or incomplete components include:
@@ -29,6 +33,7 @@ Planned or incomplete components include:
 - Indexing and plugin-style vault operations.
 - Request authentication and principal resolution beyond the current local
   fixed-principal configuration.
+- Dev-auth token minting RPC wiring and JWKS serving.
 
 ## Project Description
 
@@ -337,6 +342,21 @@ RPC. It accepts or generates an `X-Request-ID`, returns that request ID on
 success and error responses, extracts W3C `traceparent` trace IDs when present,
 and records a keyed HMAC-SHA256 hash of the remote client address rather than
 the raw address.
+
+## Run The Development Auth Service
+
+The development auth CLI is an early local helper for future JWT-based
+authentication testing. It currently starts a Connect/gRPC service with health
+and reflection enabled on `127.0.0.1:50052`:
+
+```bash
+go run ./cmd/dev-auth serve
+```
+
+The `MintToken` RPC is intentionally still unimplemented, and the service does
+not yet expose a JWKS endpoint. The Bruno collection in `bruno/devauth` points
+at the dev-auth default address for exercising the service shape while those
+pieces are being built.
 
 ## Develop Canterbury
 

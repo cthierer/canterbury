@@ -123,9 +123,7 @@ type TokenClaims struct {
 	// Subject becomes the JWT subject claim.
 	Subject string `protobuf:"bytes,1,opt,name=subject,proto3" json:"subject,omitempty"`
 	// Audiences become the JWT audience claim.
-	Audiences []string `protobuf:"bytes,2,rep,name=audiences,proto3" json:"audiences,omitempty"`
-	// Groups are optional identity evidence claims for development scenarios.
-	Groups        []string `protobuf:"bytes,3,rep,name=groups,proto3" json:"groups,omitempty"`
+	Audiences     []string `protobuf:"bytes,2,rep,name=audiences,proto3" json:"audiences,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
@@ -170,13 +168,6 @@ func (x *TokenClaims) GetSubject() string {
 func (x *TokenClaims) GetAudiences() []string {
 	if x != nil {
 		return x.Audiences
-	}
-	return nil
-}
-
-func (x *TokenClaims) GetGroups() []string {
-	if x != nil {
-		return x.Groups
 	}
 	return nil
 }
@@ -296,11 +287,10 @@ const file_canterbury_dev_v1_auth_proto_rawDesc = "" +
 	"\x06claims\x18\x01 \x01(\v2\x1e.canterbury.dev.v1.TokenClaimsR\x06claims\x12=\n" +
 	"\aoptions\x18\x02 \x01(\v2#.canterbury.dev.v1.MintTokenOptionsR\aoptions\"I\n" +
 	"\x11MintTokenResponse\x124\n" +
-	"\x05token\x18\x01 \x01(\v2\x1e.canterbury.dev.v1.MintedTokenR\x05token\"]\n" +
+	"\x05token\x18\x01 \x01(\v2\x1e.canterbury.dev.v1.MintedTokenR\x05token\"E\n" +
 	"\vTokenClaims\x12\x18\n" +
 	"\asubject\x18\x01 \x01(\tR\asubject\x12\x1c\n" +
-	"\taudiences\x18\x02 \x03(\tR\taudiences\x12\x16\n" +
-	"\x06groups\x18\x03 \x03(\tR\x06groups\"3\n" +
+	"\taudiences\x18\x02 \x03(\tR\taudiences\"3\n" +
 	"\x10MintTokenOptions\x12\x1f\n" +
 	"\vttl_seconds\x18\x01 \x01(\x03R\n" +
 	"ttlSeconds\"y\n" +

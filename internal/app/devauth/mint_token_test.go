@@ -1,6 +1,7 @@
 package devauth
 
 import (
+	"context"
 	"errors"
 	"reflect"
 	"testing"
@@ -16,10 +17,14 @@ func TestMintTokenNormalizesClaimsAndUsesDefaultTTL(t *testing.T) {
 	}
 	service := newTestService(t, minter, fixedClock{now: now})
 
-	token, err := service.MintToken(domain.Claims{
-		Subject:   " user_123 ",
-		Audiences: []string{" https://canterbury.example.test "},
-	})
+	token, err := service.MintToken(
+		t.Context(),
+		domain.Claims{
+			Subject:   " user_123 ",
+			Audiences: []string{" https://canterbury.example.test "},
+		},
+		domain.MintOptions{},
+	)
 	if err != nil {
 		t.Fatalf("MintToken() error = %v", err)
 	}
@@ -36,12 +41,11 @@ func TestMintTokenNormalizesClaimsAndUsesDefaultTTL(t *testing.T) {
 		t.Fatalf("minter claims = %#v, want %#v", minter.claims, wantClaims)
 	}
 
-	wantOptions := domain.MintOptions{
-		IssuedAt:  now,
-		ExpiresAt: now.Add(defaultTTL),
+	if minter.issuedAt != now {
+		t.Fatalf("issued at = %v, want %v", minter.issuedAt, now)
 	}
-	if minter.options != wantOptions {
-		t.Fatalf("minter options = %#v, want %#v", minter.options, wantOptions)
+	if minter.expiresAt != now.Add(defaultTTL) {
+		t.Fatalf("expires at = %v, want %v", minter.expiresAt, now.Add(defaultTTL))
 	}
 }
 
@@ -51,15 +55,18 @@ func TestMintTokenUsesTTL(t *testing.T) {
 	service := newTestService(t, minter, fixedClock{now: now})
 
 	_, err := service.MintToken(
+		t.Context(),
 		domain.Claims{Subject: "user_123", Audiences: []string{"canterbury"}},
-		WithTTL(30*time.Minute),
+		domain.MintOptions{
+			TTL: 30 * time.Minute,
+		},
 	)
 	if err != nil {
 		t.Fatalf("MintToken() error = %v", err)
 	}
 
-	if minter.options.ExpiresAt != now.Add(30*time.Minute) {
-		t.Fatalf("expires at = %v, want %v", minter.options.ExpiresAt, now.Add(30*time.Minute))
+	if minter.expiresAt != now.Add(30*time.Minute) {
+		t.Fatalf("expires at = %v, want %v", minter.expiresAt, now.Add(30*time.Minute))
 	}
 }
 
@@ -67,7 +74,7 @@ func TestMintTokenRejectsInvalidInput(t *testing.T) {
 	tests := []struct {
 		name    string
 		claims  domain.Claims
-		options []MintOption
+		options domain.MintOptions
 		wantErr error
 	}{
 		{
@@ -86,15 +93,19 @@ func TestMintTokenRejectsInvalidInput(t *testing.T) {
 			wantErr: ErrMissingAudience,
 		},
 		{
-			name:    "negative ttl",
-			claims:  domain.Claims{Subject: "user_123", Audiences: []string{"canterbury"}},
-			options: []MintOption{WithTTL(-1 * time.Second)},
+			name:   "negative ttl",
+			claims: domain.Claims{Subject: "user_123", Audiences: []string{"canterbury"}},
+			options: domain.MintOptions{
+				TTL: -1 * time.Second,
+			},
 			wantErr: ErrNegativeTTL,
 		},
 		{
-			name:    "large ttl",
-			claims:  domain.Claims{Subject: "user_123", Audiences: []string{"canterbury"}},
-			options: []MintOption{WithTTL(maxTTL + time.Second)},
+			name:   "large ttl",
+			claims: domain.Claims{Subject: "user_123", Audiences: []string{"canterbury"}},
+			options: domain.MintOptions{
+				TTL: maxTTL + time.Second,
+			},
 			wantErr: ErrLargeTTL,
 		},
 	}
@@ -103,7 +114,7 @@ func TestMintTokenRejectsInvalidInput(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			service := newTestService(t, &recordingMinter{}, fixedClock{now: time.Now()})
 
-			_, err := service.MintToken(tt.claims, tt.options...)
+			_, err := service.MintToken(t.Context(), tt.claims, tt.options)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("MintToken() error = %v, want %v", err, tt.wantErr)
 			}
@@ -134,14 +145,16 @@ func newTestService(t *testing.T, minter domain.Minter, clock fixedClock) *Servi
 
 type recordingMinter struct {
 	claims          domain.Claims
-	options         domain.MintOptions
+	issuedAt        time.Time
+	expiresAt       time.Time
 	token           domain.Token
 	verificationKey domain.VerificationKey
 }
 
-func (minter *recordingMinter) MintToken(claims domain.Claims, options domain.MintOptions) (domain.Token, error) {
+func (minter *recordingMinter) MintToken(_ context.Context, claims domain.Claims, issuedAt time.Time, expiresAt time.Time) (domain.Token, error) {
 	minter.claims = claims
-	minter.options = options
+	minter.issuedAt = issuedAt
+	minter.expiresAt = expiresAt
 	return minter.token, nil
 }
 

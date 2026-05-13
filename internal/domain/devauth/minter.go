@@ -1,15 +1,17 @@
 package devauth
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
-// MintOptions contains service-controlled token timing values.
+// MintOptions contains caller-controlled token minting options.
 type MintOptions struct {
-	IssuedAt  time.Time
-	ExpiresAt time.Time
+	TTL time.Duration
 }
 
 // Minter signs development tokens and exposes their verification key.
 type Minter interface {
-	MintToken(claims Claims, options MintOptions) (Token, error)
+	MintToken(ctx context.Context, claims Claims, issuedAt time.Time, expiresAt time.Time) (Token, error)
 	VerificationKey() VerificationKey
 }

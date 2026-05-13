@@ -27,7 +27,7 @@ import (
 	"github.com/cthierer/canterbury/internal/app/auth"
 	vaultapp "github.com/cthierer/canterbury/internal/app/vault"
 	vaultdomain "github.com/cthierer/canterbury/internal/domain/vault"
-	vaultconnect "github.com/cthierer/canterbury/internal/interfaces/connectrpc"
+	vaultconnect "github.com/cthierer/canterbury/internal/interfaces/vaultrpc"
 	"github.com/joho/godotenv"
 )
 

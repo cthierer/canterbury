@@ -46,14 +46,13 @@ func TestMintTokenBuildsSignedJWT(t *testing.T) {
 	expiresAt := issuedAt.Add(15 * time.Minute)
 
 	token, err := minter.MintToken(
+		t.Context(),
 		devauth.Claims{
 			Subject:   "user_123",
 			Audiences: []string{"https://canterbury.example.test"},
 		},
-		devauth.MintOptions{
-			IssuedAt:  issuedAt,
-			ExpiresAt: expiresAt,
-		},
+		issuedAt,
+		expiresAt,
 	)
 	if err != nil {
 		t.Fatalf("MintToken() error = %v", err)
