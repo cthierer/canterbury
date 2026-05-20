@@ -10,7 +10,10 @@ grpc:
   protoFilePath: ../../api/canterbury/dev/v1/auth.proto
   message: |-
     {
-      "claims": {},
+      "claims": {
+        "subject": "me",
+        "audiences": ["test"]
+      },
       "options": {}
     }
   auth: inherit

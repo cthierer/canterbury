@@ -80,17 +80,17 @@ func TestMintTokenRejectsInvalidInput(t *testing.T) {
 		{
 			name:    "missing subject",
 			claims:  domain.Claims{Audiences: []string{"canterbury"}},
-			wantErr: ErrMissingSubject,
+			wantErr: domain.ErrMissingSubject,
 		},
 		{
 			name:    "missing audience",
 			claims:  domain.Claims{Subject: "user_123"},
-			wantErr: ErrMissingAudience,
+			wantErr: domain.ErrMissingAudience,
 		},
 		{
 			name:    "blank audience",
 			claims:  domain.Claims{Subject: "user_123", Audiences: []string{" "}},
-			wantErr: ErrMissingAudience,
+			wantErr: domain.ErrMissingAudience,
 		},
 		{
 			name:   "negative ttl",
@@ -98,7 +98,7 @@ func TestMintTokenRejectsInvalidInput(t *testing.T) {
 			options: domain.MintOptions{
 				TTL: -1 * time.Second,
 			},
-			wantErr: ErrNegativeTTL,
+			wantErr: domain.ErrNegativeTTL,
 		},
 		{
 			name:   "large ttl",
@@ -106,7 +106,7 @@ func TestMintTokenRejectsInvalidInput(t *testing.T) {
 			options: domain.MintOptions{
 				TTL: maxTTL + time.Second,
 			},
-			wantErr: ErrLargeTTL,
+			wantErr: domain.ErrLargeTTL,
 		},
 	}
 

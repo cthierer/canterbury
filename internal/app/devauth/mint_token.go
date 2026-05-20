@@ -22,12 +22,12 @@ func (service *Service) MintToken(ctx context.Context, claims domain.Claims, opt
 
 	subject := strings.TrimSpace(claims.Subject)
 	if subject == "" {
-		return domain.Token{}, ErrMissingSubject
+		return domain.Token{}, domain.ErrMissingSubject
 	}
 
 	audiences := formatAudiences(claims.Audiences)
 	if len(audiences) < 1 || len(audiences) != len(claims.Audiences) {
-		return domain.Token{}, ErrMissingAudience
+		return domain.Token{}, domain.ErrMissingAudience
 	}
 
 	issuedAt := service.clock.Now()
@@ -49,11 +49,11 @@ func (service *Service) MintToken(ctx context.Context, claims domain.Claims, opt
 
 func expiryForTTL(issuedAt time.Time, ttl time.Duration) (time.Time, error) {
 	if ttl < 0 {
-		return time.Time{}, ErrNegativeTTL
+		return time.Time{}, domain.ErrNegativeTTL
 	}
 
 	if ttl > maxTTL {
-		return time.Time{}, ErrLargeTTL
+		return time.Time{}, domain.ErrLargeTTL
 	}
 
 	if ttl == 0 {

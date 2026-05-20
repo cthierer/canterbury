@@ -5,10 +5,9 @@ vault through a controlled service layer. The long-term goal is to let agents
 read, search, and eventually write vault content while enforcing explicit access
 policies and recording an independent audit trail of every interaction.
 
-This repository currently implements a Dockerized sync worker and an early local
-Go vault service with scoped `ReadNote` and `SearchNotes` RPCs. It also
-contains the first development auth service scaffolding for local JWT minting
-work.
+This repository currently implements a Dockerized sync worker, an early local Go
+vault service with scoped `ReadNote` and `SearchNotes` RPCs, and a development
+auth helper for minting local JWTs.
 
 ## Project Status
 
@@ -23,8 +22,8 @@ Canterbury is in early development. The current implementation includes:
   principal configured by environment variable.
 - Date-rotated JSONL audit logging for vault read and search attempts.
 - Connect/gRPC health, reflection, `ReadNote`, and `SearchNotes` handlers.
-- A development auth CLI skeleton that starts a local Connect/gRPC service for
-  future JWT minting support.
+- A development auth CLI that starts a local Connect/gRPC service for minting
+  local JWTs.
 - Repository formatting, test, and linting tooling.
 
 Planned or incomplete components include:
@@ -33,7 +32,7 @@ Planned or incomplete components include:
 - Indexing and plugin-style vault operations.
 - Request authentication and principal resolution beyond the current local
   fixed-principal configuration.
-- Dev-auth token minting RPC wiring and JWKS serving.
+- Dev-auth JWKS serving.
 
 ## Project Description
 
@@ -345,18 +344,34 @@ the raw address.
 
 ## Run The Development Auth Service
 
-The development auth CLI is an early local helper for future JWT-based
-authentication testing. It currently starts a Connect/gRPC service with health
-and reflection enabled on `127.0.0.1:50052`:
+The development auth CLI is an early local helper for JWT-based authentication
+testing. It starts a Connect/gRPC service with health and reflection enabled on
+`127.0.0.1:50052`:
 
 ```bash
 go run ./cmd/dev-auth serve
 ```
 
-The `MintToken` RPC is intentionally still unimplemented, and the service does
-not yet expose a JWKS endpoint. The Bruno collection in `bruno/devauth` points
-at the dev-auth default address for exercising the service shape while those
-pieces are being built.
+The `MintToken` RPC creates an EdDSA-signed bearer JWT for requested claims:
+
+```json
+{
+	"claims": {
+		"subject": "user_123",
+		"audiences": ["canterbury"]
+	},
+	"options": {
+		"ttlSeconds": 900
+	}
+}
+```
+
+Omit `options.ttlSeconds` or set it to `0` to use the service default. The
+application rejects missing subjects, missing audiences, negative TTLs, and TTLs
+above the current local development maximum. The service does not yet expose a
+JWKS endpoint, so minted tokens are mainly useful for exercising the auth flow
+while verification plumbing is being built. The Bruno collection in
+`bruno/devauth` points at the dev-auth default address.
 
 ## Develop Canterbury
 
