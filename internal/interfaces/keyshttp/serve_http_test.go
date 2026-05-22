@@ -143,9 +143,7 @@ func TestServeHTTPHandlesCanceledAndTimedOutRequests(t *testing.T) {
 		{
 			name: "deadline exceeded",
 			ctx: func() context.Context {
-				ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
-				cancel()
-				return ctx
+				return deadlineExceededContext(t)
 			},
 			wantMsg: "request timeout\n",
 		},
@@ -215,6 +213,16 @@ func captureLogger(t *testing.T) *captureLogHandler {
 	})
 
 	return handler
+}
+
+func deadlineExceededContext(t *testing.T) context.Context {
+	t.Helper()
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	t.Cleanup(cancel)
+	time.Sleep(time.Millisecond)
+
+	return ctx
 }
 
 type captureLogHandler struct {

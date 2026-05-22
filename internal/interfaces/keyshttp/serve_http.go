@@ -44,10 +44,14 @@ func (service *KeyStoreServiceHandler) ServeHTTP(res http.ResponseWriter, req *h
 	_, err = res.Write(respJSON)
 	if err != nil {
 		// Can't do much at this point, just log the error
-		status, _ := classifyHTTPError(err)
-		logHTTPError(ctx, "writing response", err, status)
+		logHTTPError(ctx, "writing response", err, httpErrorStatus(err))
 		return
 	}
+}
+
+func httpErrorStatus(err error) int {
+	status, _ := classifyHTTPError(err)
+	return status
 }
 
 func classifyHTTPError(err error) (status int, message string) {
