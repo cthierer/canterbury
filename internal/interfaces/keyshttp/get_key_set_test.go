@@ -49,12 +49,31 @@ func TestVerificationKeyToJWKRejectsUnsupportedKeys(t *testing.T) {
 func TestVerificationKeyToJWKRejectsInvalidEd25519Keys(t *testing.T) {
 	publicKey := ed25519.PublicKey([]byte("too short"))
 
-	_, err := verificationKeyToJWK(devauth.VerificationKey{PublicKey: publicKey})
+	_, err := verificationKeyToJWK(devauth.VerificationKey{
+		Algorithm: devauth.SigningAlgorithmEdDSA,
+		PublicKey: publicKey,
+	})
 	if err == nil {
 		t.Fatal("expected error")
 	}
 
 	if !strings.Contains(err.Error(), "invalid Ed25519 public key size") {
 		t.Fatalf("verificationKeyToJWK() error = %q, want invalid Ed25519 size", err)
+	}
+}
+
+func TestVerificationKeyToJWKRejectsMismatchedEd25519Algorithm(t *testing.T) {
+	publicKey := ed25519.PublicKey([]byte("12345678901234567890123456789012"))
+
+	_, err := verificationKeyToJWK(devauth.VerificationKey{
+		Algorithm: devauth.SigningAlgorithm("RS256"),
+		PublicKey: publicKey,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	if !strings.Contains(err.Error(), `unsupported signing algorithm for Ed25519 public key: "RS256"`) {
+		t.Fatalf("verificationKeyToJWK() error = %q, want mismatched algorithm", err)
 	}
 }

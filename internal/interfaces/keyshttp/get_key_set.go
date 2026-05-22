@@ -37,13 +37,13 @@ func verificationKeyToJWK(verificationKey devauth.VerificationKey) (key, error) 
 		}
 
 		var err error
-		jwk, err = setEd25519Key(jwk, *k)
+		jwk, err = setEd25519Key(jwk, verificationKey.Algorithm, *k)
 		if err != nil {
 			return key{}, fmt.Errorf("set ed25519 key: %w", err)
 		}
 	case ed25519.PublicKey:
 		var err error
-		jwk, err = setEd25519Key(jwk, k)
+		jwk, err = setEd25519Key(jwk, verificationKey.Algorithm, k)
 		if err != nil {
 			return key{}, fmt.Errorf("set ed25519 key: %w", err)
 		}
@@ -54,13 +54,17 @@ func verificationKeyToJWK(verificationKey devauth.VerificationKey) (key, error) 
 	return jwk, nil
 }
 
-func setEd25519Key(jwk key, publicKey ed25519.PublicKey) (key, error) {
+func setEd25519Key(jwk key, algorithm devauth.SigningAlgorithm, publicKey ed25519.PublicKey) (key, error) {
+	if algorithm != devauth.SigningAlgorithmEdDSA {
+		return key{}, fmt.Errorf("unsupported signing algorithm for Ed25519 public key: %q", algorithm)
+	}
+
 	if len(publicKey) != ed25519.PublicKeySize {
 		return key{}, fmt.Errorf("invalid Ed25519 public key size: expected %d bytes, got %d bytes", ed25519.PublicKeySize, len(publicKey))
 	}
 
 	jwk.Kty = "OKP"
-	jwk.Alg = "EdDSA"
+	jwk.Alg = algorithm.String()
 	jwk.Crv = "Ed25519"
 	jwk.X = base64.RawURLEncoding.EncodeToString([]byte(publicKey))
 
