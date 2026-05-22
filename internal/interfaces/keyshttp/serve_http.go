@@ -27,7 +27,7 @@ func (service *KeyStoreServiceHandler) ServeHTTP(res http.ResponseWriter, req *h
 
 	respJSON, err := json.Marshal(jwks)
 	if err != nil {
-		slog.ErrorContext(ctx, "marshaling key set", "error", err)
+		slog.ErrorContext(ctx, "marshaling key set", "err", err)
 		http.Error(res, "internal server error", http.StatusInternalServerError)
 		return
 	}
