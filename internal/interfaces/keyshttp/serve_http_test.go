@@ -1,13 +1,16 @@
 package keyshttp
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cthierer/canterbury/internal/domain/devauth"
 )
@@ -99,6 +102,7 @@ func TestServeHTTPHidesInvalidKeyDetails(t *testing.T) {
 	handler := newTestHandler(t, devauth.VerificationKey{PublicKey: "not a public key"})
 	req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil)
 	rec := httptest.NewRecorder()
+	logHandler := captureLogger(t)
 
 	handler.ServeHTTP(rec, req)
 
@@ -110,6 +114,62 @@ func TestServeHTTPHidesInvalidKeyDetails(t *testing.T) {
 	}
 	if strings.Contains(rec.Body.String(), "unsupported key type") {
 		t.Fatalf("body = %q, want no key details", rec.Body.String())
+	}
+	if len(logHandler.records) != 1 {
+		t.Fatalf("log count = %d, want 1", len(logHandler.records))
+	}
+	if got := logHandler.records[0].Level; got != slog.LevelError {
+		t.Fatalf("log level = %s, want %s", got, slog.LevelError)
+	}
+}
+
+func TestServeHTTPHandlesCanceledAndTimedOutRequests(t *testing.T) {
+	tests := []struct {
+		name    string
+		ctx     func() context.Context
+		wantMsg string
+	}{
+		{
+			name: "canceled request",
+			ctx: func() context.Context {
+				ctx, cancel := context.WithCancel(context.Background())
+				cancel()
+				return ctx
+			},
+			wantMsg: "request canceled\n",
+		},
+		{
+			name: "deadline exceeded",
+			ctx: func() context.Context {
+				ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+				return ctx
+			},
+			wantMsg: "request timeout\n",
+		},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			handler := newTestHandler(t, testVerificationKey())
+			req := httptest.NewRequest(http.MethodGet, "/.well-known/jwks.json", nil).WithContext(test.ctx())
+			rec := httptest.NewRecorder()
+			logHandler := captureLogger(t)
+
+			handler.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusRequestTimeout {
+				t.Fatalf("status = %d, want %d", rec.Code, http.StatusRequestTimeout)
+			}
+			if got := rec.Body.String(); got != test.wantMsg {
+				t.Fatalf("body = %q, want %q", got, test.wantMsg)
+			}
+			if len(logHandler.records) != 1 {
+				t.Fatalf("log count = %d, want 1", len(logHandler.records))
+			}
+			if got := logHandler.records[0].Level; got != slog.LevelDebug {
+				t.Fatalf("log level = %s, want %s", got, slog.LevelDebug)
+			}
+		})
 	}
 }
 
@@ -138,4 +198,38 @@ type fakeKeyStore struct {
 
 func (store fakeKeyStore) VerificationKey() devauth.VerificationKey {
 	return store.verificationKey
+}
+
+func captureLogger(t *testing.T) *captureLogHandler {
+	t.Helper()
+
+	handler := &captureLogHandler{}
+	defaultLogger := slog.Default()
+	slog.SetDefault(slog.New(handler))
+	t.Cleanup(func() {
+		slog.SetDefault(defaultLogger)
+	})
+
+	return handler
+}
+
+type captureLogHandler struct {
+	records []slog.Record
+}
+
+func (h *captureLogHandler) Enabled(context.Context, slog.Level) bool {
+	return true
+}
+
+func (h *captureLogHandler) Handle(_ context.Context, record slog.Record) error {
+	h.records = append(h.records, record.Clone())
+	return nil
+}
+
+func (h *captureLogHandler) WithAttrs([]slog.Attr) slog.Handler {
+	return h
+}
+
+func (h *captureLogHandler) WithGroup(string) slog.Handler {
+	return h
 }
