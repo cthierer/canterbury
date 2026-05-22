@@ -4,7 +4,9 @@ package main
 import (
 	"context"
 	"errors"
+	"flag"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -20,12 +22,16 @@ import (
 	"github.com/cthierer/canterbury/internal/app/devauth"
 	"github.com/cthierer/canterbury/internal/interfaces/devrpc"
 	"github.com/cthierer/canterbury/internal/interfaces/keyshttp"
+	"github.com/joho/godotenv"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
 
 const (
 	defaultAddress      = "127.0.0.1:50052"
+	defaultIssuer       = "devauth.canterbury.local"
+	devAuthAddressEnv   = "DEV_AUTH_ADDR"
+	devAuthIssuerEnv    = "DEV_AUTH_ISSUER"
 	readHeaderTimeout   = 5 * time.Second
 	shutdownGracePeriod = 10 * time.Second
 )
@@ -38,16 +44,34 @@ func main() {
 }
 
 func run() error {
-	args := os.Args[1:]
+	return runArgs(os.Args[1:], os.Stdout)
+}
 
+func runArgs(args []string, output io.Writer) error {
 	cmd, err := parseCommand(args)
 	if err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			writeUsage(output)
+			return nil
+		}
+
 		return fmt.Errorf("parse CLI command: %w", err)
 	}
 
 	switch cmd {
 	case commandServe:
-		cfg := loadServeConfig(args[1:])
+		if err := loadLocalEnv(); err != nil {
+			return err
+		}
+
+		cfg, err := loadServeConfig(args[1:], output)
+		if err != nil {
+			if errors.Is(err, flag.ErrHelp) {
+				return nil
+			}
+
+			return fmt.Errorf("parse serve configuration: %w", err)
+		}
 
 		err = serve(cfg)
 		if err != nil {
@@ -78,6 +102,8 @@ func parseCommand(args []string) (command, error) {
 	commandString := strings.TrimSpace(args[0])
 
 	switch strings.ToLower(commandString) {
+	case "-h", "--help", "help":
+		return "", flag.ErrHelp
 	case "serve":
 		return commandServe, nil
 	}
@@ -90,11 +116,33 @@ type serveConfig struct {
 	Issuer  string
 }
 
-func loadServeConfig(_ []string) serveConfig {
-	// TODO load service configuration from environment, CLI args
-	return serveConfig{
-		Issuer: "devauth.canterbury.local",
+func loadServeConfig(args []string, output io.Writer) (serveConfig, error) {
+	cfg := serveConfig{
+		Address: configValue(devAuthAddressEnv, defaultAddress),
+		Issuer:  configValue(devAuthIssuerEnv, defaultIssuer),
 	}
+
+	flags := flag.NewFlagSet("dev-auth serve", flag.ContinueOnError)
+	flags.SetOutput(output)
+	flags.StringVar(&cfg.Address, "addr", cfg.Address, "HTTP listen address")
+	flags.StringVar(&cfg.Issuer, "issuer", cfg.Issuer, "issuer claim for minted JWTs")
+	flags.Usage = func() {
+		writeServeUsage(output, flags)
+	}
+
+	if err := flags.Parse(args); err != nil {
+		return serveConfig{}, err
+	}
+
+	if flags.NArg() > 0 {
+		return serveConfig{}, fmt.Errorf("unexpected serve argument %q", flags.Arg(0))
+	}
+
+	if strings.TrimSpace(cfg.Address) == "" {
+		return serveConfig{}, fmt.Errorf("address must not be empty")
+	}
+
+	return cfg, nil
 }
 
 func serve(cfg serveConfig) error {
@@ -102,11 +150,6 @@ func serve(cfg serveConfig) error {
 	defer stop()
 
 	mux := http.NewServeMux()
-
-	address := cfg.Address
-	if address == "" {
-		address = defaultAddress
-	}
 
 	minter, err := devauthjwt.NewMinter(cfg.Issuer)
 	if err != nil {
@@ -143,14 +186,14 @@ func serve(cfg serveConfig) error {
 	mux.Handle(reflectV1AlphaPath, reflectV1AlphaHandler)
 
 	server := &http.Server{
-		Addr:              address,
+		Addr:              cfg.Address,
 		Handler:           h2c.NewHandler(mux, &http2.Server{}),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
 	errs := make(chan error, 1)
 	go func() {
-		slog.Info("starting devauth service", "address", address)
+		slog.Info("starting devauth service")
 		errs <- server.ListenAndServe()
 	}()
 
@@ -171,4 +214,41 @@ func serve(cfg serveConfig) error {
 
 		return err
 	}
+}
+
+func configValue(name string, fallback string) string {
+	value := os.Getenv(name)
+	if value == "" {
+		return fallback
+	}
+
+	return value
+}
+
+func loadLocalEnv() error {
+	if err := godotenv.Load(".env"); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("load dotenv configuration: %w", err)
+	}
+
+	return nil
+}
+
+func writeUsage(output io.Writer) {
+	_, _ = fmt.Fprint(output, `Usage:
+  dev-auth serve [flags]
+
+Commands:
+  serve    Start the development auth service
+
+Run "dev-auth serve --help" for serve flags.
+`)
+}
+
+func writeServeUsage(output io.Writer, flags *flag.FlagSet) {
+	_, _ = fmt.Fprint(output, `Usage:
+  dev-auth serve [flags]
+
+Flags:
+`)
+	flags.PrintDefaults()
 }

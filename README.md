@@ -351,6 +351,24 @@ testing. It starts a Connect/gRPC service with health and reflection enabled on
 go run ./cmd/dev-auth serve
 ```
 
+The `serve` command accepts flags for its local server address and JWT issuer:
+
+```bash
+go run ./cmd/dev-auth serve \
+  --addr 127.0.0.1:50052 \
+  --issuer devauth.canterbury.local
+```
+
+| Variable          | Flag       | Description                                                                                  |
+| ----------------- | ---------- | -------------------------------------------------------------------------------------------- |
+| `DEV_AUTH_ADDR`   | `--addr`   | Address for the development auth Connect server. Defaults to `127.0.0.1:50052` when not set. |
+| `DEV_AUTH_ISSUER` | `--issuer` | Issuer claim placed in minted development JWTs. Defaults to `devauth.canterbury.local`.      |
+
+When `.env` is present at the repository root, the development auth command loads
+these values from it without overriding real environment variables. Command-line
+flags take precedence over environment and `.env` values. Run
+`go run ./cmd/dev-auth serve --help` to print serve flags.
+
 The `MintToken` RPC creates an EdDSA-signed bearer JWT for requested claims:
 
 ```json
