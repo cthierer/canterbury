@@ -23,7 +23,7 @@ Canterbury is in early development. The current implementation includes:
 - Date-rotated JSONL audit logging for vault read and search attempts.
 - Connect/gRPC health, reflection, `ReadNote`, and `SearchNotes` handlers.
 - A development auth CLI that starts a local Connect/gRPC service for minting
-  local JWTs.
+  local JWTs and serving its public verification key as JWKS.
 - Repository formatting, test, and linting tooling.
 
 Planned or incomplete components include:
@@ -32,7 +32,6 @@ Planned or incomplete components include:
 - Indexing and plugin-style vault operations.
 - Request authentication and principal resolution beyond the current local
   fixed-principal configuration.
-- Dev-auth JWKS serving.
 
 ## Project Description
 
@@ -368,9 +367,11 @@ The `MintToken` RPC creates an EdDSA-signed bearer JWT for requested claims:
 
 Omit `options.ttlSeconds` or set it to `0` to use the service default. The
 application rejects missing subjects, missing audiences, negative TTLs, and TTLs
-above the current local development maximum. The service does not yet expose a
-JWKS endpoint, so minted tokens are mainly useful for exercising the auth flow
-while verification plumbing is being built. The Bruno collection in
+above the current local development maximum. The service exposes its public
+verification key as JWKS at `http://127.0.0.1:50052/.well-known/jwks.json` so
+local verifier work can use the same JWKS shape planned for deployed auth. The
+key is generated in memory when the service starts, so tokens minted before a
+restart do not verify against the new endpoint response. The Bruno collection in
 `bruno/devauth` points at the dev-auth default address.
 
 ## Develop Canterbury

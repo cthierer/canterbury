@@ -19,6 +19,7 @@ import (
 	"github.com/cthierer/canterbury/internal/adapters/devauthjwt"
 	"github.com/cthierer/canterbury/internal/app/devauth"
 	"github.com/cthierer/canterbury/internal/interfaces/devrpc"
+	"github.com/cthierer/canterbury/internal/interfaces/keyshttp"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
@@ -124,6 +125,12 @@ func serve(cfg serveConfig) error {
 
 	authPath, authHandler := devv1connect.NewDevAuthServiceHandler(authService)
 	mux.Handle(authPath, authHandler)
+
+	jwksHandler, err := keyshttp.NewKeyStoreServiceHandler(authApplication)
+	if err != nil {
+		return fmt.Errorf("initialize JWKS service: %w", err)
+	}
+	mux.Handle("/.well-known/jwks.json", jwksHandler)
 
 	checker := grpchealth.NewStaticChecker(devv1connect.DevAuthServiceName)
 	healthPath, healthHandler := grpchealth.NewHandler(checker)

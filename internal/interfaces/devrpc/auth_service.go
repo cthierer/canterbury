@@ -14,7 +14,6 @@ var _ devv1connect.DevAuthServiceHandler = (*DevAuthServiceHandler)(nil)
 // AuthApplication defines the development auth application behavior used by RPC handlers.
 type AuthApplication interface {
 	MintToken(ctx context.Context, claims devauth.Claims, options devauth.MintOptions) (devauth.Token, error)
-	VerificationKey() devauth.VerificationKey
 }
 
 // DevAuthServiceHandler implements the generated Connect development auth service.
