@@ -45,7 +45,7 @@ const (
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("vault service stopped", "error", err)
+		slog.ErrorContext(context.Background(), "vault service stopped", "err", err)
 		os.Exit(1)
 	}
 }
@@ -148,7 +148,7 @@ func run() error {
 
 	errs := make(chan error, 1)
 	go func() {
-		slog.Info("starting vault service", "address", address)
+		slog.InfoContext(ctx, "starting vault service", "address", address)
 		errs <- server.ListenAndServe()
 	}()
 

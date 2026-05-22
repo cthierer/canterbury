@@ -38,7 +38,7 @@ const (
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("program failed", "error", err)
+		slog.ErrorContext(context.Background(), "program failed", "err", err)
 		os.Exit(1)
 	}
 }
@@ -193,7 +193,7 @@ func serve(cfg serveConfig) error {
 
 	errs := make(chan error, 1)
 	go func() {
-		slog.Info("starting devauth service")
+		slog.InfoContext(ctx, "starting devauth service")
 		errs <- server.ListenAndServe()
 	}()
 
