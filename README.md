@@ -5,8 +5,9 @@ vault through a controlled service layer. The long-term goal is to let agents
 read, search, and eventually write vault content while enforcing explicit access
 policies and recording an independent audit trail of every interaction.
 
-This repository currently implements a Dockerized sync worker and an early local
-Go vault service with scoped `ReadNote` and `SearchNotes` RPCs.
+This repository currently implements a Dockerized sync worker, an early local Go
+vault service with scoped `ReadNote` and `SearchNotes` RPCs, and a development
+auth helper for minting local JWTs.
 
 ## Project Status
 
@@ -21,6 +22,8 @@ Canterbury is in early development. The current implementation includes:
   principal configured by environment variable.
 - Date-rotated JSONL audit logging for vault read and search attempts.
 - Connect/gRPC health, reflection, `ReadNote`, and `SearchNotes` handlers.
+- A development auth CLI that starts a local Connect/gRPC service for minting
+  local JWTs and serving its public verification key as JWKS.
 - Repository formatting, test, and linting tooling.
 
 Planned or incomplete components include:
@@ -337,6 +340,57 @@ RPC. It accepts or generates an `X-Request-ID`, returns that request ID on
 success and error responses, extracts W3C `traceparent` trace IDs when present,
 and records a keyed HMAC-SHA256 hash of the remote client address rather than
 the raw address.
+
+## Run The Development Auth Service
+
+The development auth CLI is an early local helper for JWT-based authentication
+testing. It starts a Connect/gRPC service with health and reflection enabled on
+`127.0.0.1:50052`:
+
+```bash
+go run ./cmd/dev-auth serve
+```
+
+The `serve` command accepts flags for its local server address and JWT issuer:
+
+```bash
+go run ./cmd/dev-auth serve \
+  --addr 127.0.0.1:50052 \
+  --issuer devauth.canterbury.local
+```
+
+| Variable          | Flag       | Description                                                                                  |
+| ----------------- | ---------- | -------------------------------------------------------------------------------------------- |
+| `DEV_AUTH_ADDR`   | `--addr`   | Address for the development auth Connect server. Defaults to `127.0.0.1:50052` when not set. |
+| `DEV_AUTH_ISSUER` | `--issuer` | Issuer claim placed in minted development JWTs. Defaults to `devauth.canterbury.local`.      |
+
+When `.env` is present at the repository root, the development auth command loads
+these values from it without overriding real environment variables. Command-line
+flags take precedence over environment and `.env` values. Run
+`go run ./cmd/dev-auth serve --help` to print serve flags.
+
+The `MintToken` RPC creates an EdDSA-signed bearer JWT for requested claims:
+
+```json
+{
+	"claims": {
+		"subject": "user_123",
+		"audiences": ["canterbury"]
+	},
+	"options": {
+		"ttlSeconds": 900
+	}
+}
+```
+
+Omit `options.ttlSeconds` or set it to `0` to use the service default. The
+application rejects missing subjects, missing audiences, negative TTLs, and TTLs
+above the current local development maximum. The service exposes its public
+verification key as JWKS at `http://127.0.0.1:50052/.well-known/jwks.json` so
+local verifier work can use the same JWKS shape planned for deployed auth. The
+key is generated in memory when the service starts, so tokens minted before a
+restart do not verify against the new endpoint response. The Bruno collection in
+`bruno/devauth` points at the dev-auth default address.
 
 ## Develop Canterbury
 
