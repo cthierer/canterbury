@@ -40,6 +40,22 @@ func TestVerificationKeyMatchesGeneratedPublicKey(t *testing.T) {
 	}
 }
 
+func TestVerificationKeyDoesNotExposeMinterPublicKey(t *testing.T) {
+	minter := newTestMinter(t)
+
+	key := minter.VerificationKey()
+	publicKey, ok := key.PublicKey.(ed25519.PublicKey)
+	if !ok {
+		t.Fatalf("public key type = %T, want %T", key.PublicKey, ed25519.PublicKey(nil))
+	}
+
+	originalFirstByte := minter.publicKey[0]
+	publicKey[0] ^= 0xff
+	if minter.publicKey[0] != originalFirstByte {
+		t.Fatal("mutating verification key changed generated minter key")
+	}
+}
+
 func TestMintTokenBuildsSignedJWT(t *testing.T) {
 	minter := newTestMinter(t)
 	issuedAt := time.Date(2026, 5, 12, 12, 0, 0, 0, time.UTC)
