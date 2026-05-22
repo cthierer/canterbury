@@ -221,14 +221,13 @@ func deadlineExceededContext(t *testing.T) context.Context {
 	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
 	t.Cleanup(cancel)
 
-	deadline := time.After(time.Second)
-	for ctx.Err() != context.DeadlineExceeded {
-		select {
-		case <-deadline:
-			t.Fatal("context did not reach deadline exceeded state")
-		default:
-			time.Sleep(time.Millisecond)
+	select {
+	case <-ctx.Done():
+		if ctx.Err() != context.DeadlineExceeded {
+			t.Fatalf("context error = %v, want %v", ctx.Err(), context.DeadlineExceeded)
 		}
+	case <-time.After(time.Second):
+		t.Fatal("context did not reach deadline exceeded state")
 	}
 
 	return ctx

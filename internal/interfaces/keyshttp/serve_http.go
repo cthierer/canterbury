@@ -66,8 +66,7 @@ func classifyHTTPError(err error) (status int, message string) {
 }
 
 func logHTTPError(ctx context.Context, message string, err error, status int) {
-	switch status {
-	case http.StatusRequestTimeout:
+	if status == http.StatusRequestTimeout {
 		slog.DebugContext(ctx, message, "error", err, "status", status)
 		return
 	}
