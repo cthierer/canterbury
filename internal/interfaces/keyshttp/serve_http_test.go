@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -115,10 +116,11 @@ func TestServeHTTPHidesInvalidKeyDetails(t *testing.T) {
 	if strings.Contains(rec.Body.String(), "unsupported key type") {
 		t.Fatalf("body = %q, want no key details", rec.Body.String())
 	}
-	if len(logHandler.records) != 1 {
-		t.Fatalf("log count = %d, want 1", len(logHandler.records))
+	logRecords := logHandler.snapshot()
+	if len(logRecords) != 1 {
+		t.Fatalf("log count = %d, want 1", len(logRecords))
 	}
-	if got := logHandler.records[0].Level; got != slog.LevelError {
+	if got := logRecords[0].Level; got != slog.LevelError {
 		t.Fatalf("log level = %s, want %s", got, slog.LevelError)
 	}
 }
@@ -141,7 +143,8 @@ func TestServeHTTPHandlesCanceledAndTimedOutRequests(t *testing.T) {
 		{
 			name: "deadline exceeded",
 			ctx: func() context.Context {
-				ctx, _ := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+				ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+				cancel()
 				return ctx
 			},
 			wantMsg: "request timeout\n",
@@ -163,10 +166,11 @@ func TestServeHTTPHandlesCanceledAndTimedOutRequests(t *testing.T) {
 			if got := rec.Body.String(); got != test.wantMsg {
 				t.Fatalf("body = %q, want %q", got, test.wantMsg)
 			}
-			if len(logHandler.records) != 1 {
-				t.Fatalf("log count = %d, want 1", len(logHandler.records))
+			logRecords := logHandler.snapshot()
+			if len(logRecords) != 1 {
+				t.Fatalf("log count = %d, want 1", len(logRecords))
 			}
-			if got := logHandler.records[0].Level; got != slog.LevelDebug {
+			if got := logRecords[0].Level; got != slog.LevelDebug {
 				t.Fatalf("log level = %s, want %s", got, slog.LevelDebug)
 			}
 		})
@@ -214,6 +218,7 @@ func captureLogger(t *testing.T) *captureLogHandler {
 }
 
 type captureLogHandler struct {
+	mu      sync.Mutex
 	records []slog.Record
 }
 
@@ -222,6 +227,9 @@ func (h *captureLogHandler) Enabled(context.Context, slog.Level) bool {
 }
 
 func (h *captureLogHandler) Handle(_ context.Context, record slog.Record) error {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	h.records = append(h.records, record.Clone())
 	return nil
 }
@@ -232,4 +240,13 @@ func (h *captureLogHandler) WithAttrs([]slog.Attr) slog.Handler {
 
 func (h *captureLogHandler) WithGroup(string) slog.Handler {
 	return h
+}
+
+func (h *captureLogHandler) snapshot() []slog.Record {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	records := make([]slog.Record, len(h.records))
+	copy(records, h.records)
+	return records
 }
