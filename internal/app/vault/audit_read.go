@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cthierer/canterbury/internal/app/auth"
 	"github.com/cthierer/canterbury/internal/domain/audit"
 	domain "github.com/cthierer/canterbury/internal/domain/vault"
 )
@@ -28,8 +29,8 @@ func (readNoteEventAllowedDetails) EventType() audit.EventType {
 	return audit.EventTypeVaultReadAllowed
 }
 
-func (s *Service) recordReadNoteAllowed(ctx context.Context, note domain.Note, startedAt time.Time) error {
-	event := s.createEvent(ctx, startedAt)
+func (s *Service) recordReadNoteAllowed(ctx context.Context, principal auth.Principal, note domain.Note, startedAt time.Time) error {
+	event := createEvent(ctx, principal, startedAt)
 
 	event.Outcome = s.outcome(
 		startedAt,
@@ -38,8 +39,9 @@ func (s *Service) recordReadNoteAllowed(ctx context.Context, note domain.Note, s
 	)
 
 	event.Policy = audit.Policy{
-		MatchedScopes: note.Metadata.Access.MatchedScopes(s.principal.Scopes),
-		Decision:      audit.PolicyDecisionAllow,
+		MappingChecksum: principal.MappingChecksum,
+		MatchedScopes:   note.Metadata.Access.MatchedScopes(principal.Scopes),
+		Decision:        audit.PolicyDecisionAllow,
 	}
 
 	event.Details = &readNoteEventAllowedDetails{
@@ -65,8 +67,8 @@ func (readNoteEventDeniedDetails) EventType() audit.EventType {
 	return audit.EventTypeVaultReadDenied
 }
 
-func (s *Service) recordReadNoteDenied(ctx context.Context, note domain.Note, startedAt time.Time) error {
-	event := s.createEvent(ctx, startedAt)
+func (s *Service) recordReadNoteDenied(ctx context.Context, principal auth.Principal, note domain.Note, startedAt time.Time) error {
+	event := createEvent(ctx, principal, startedAt)
 
 	event.Outcome = s.outcome(
 		startedAt,
@@ -75,8 +77,9 @@ func (s *Service) recordReadNoteDenied(ctx context.Context, note domain.Note, st
 	)
 
 	event.Policy = audit.Policy{
-		Decision:      audit.PolicyDecisionDeny,
-		MatchedScopes: []domain.Scope{},
+		MappingChecksum: principal.MappingChecksum,
+		Decision:        audit.PolicyDecisionDeny,
+		MatchedScopes:   []domain.Scope{},
 	}
 
 	event.Details = &readNoteEventDeniedDetails{
@@ -101,11 +104,12 @@ func (readNoteEventErrorDetails) EventType() audit.EventType {
 	return audit.EventTypeVaultReadFailed
 }
 
-func (s *Service) recordReadNoteError(ctx context.Context, path domain.NotePath, err error, startedAt time.Time) error {
-	event := s.createEvent(ctx, startedAt)
+func (s *Service) recordReadNoteError(ctx context.Context, principal auth.Principal, path domain.NotePath, err error, startedAt time.Time) error {
+	event := createEvent(ctx, principal, startedAt)
 	status, code, reason := classifyReadNoteError(err)
 
 	event.Outcome = s.outcome(startedAt, status, code)
+	event.Policy.MappingChecksum = principal.MappingChecksum
 
 	event.Details = &readNoteEventErrorDetails{
 		NoteRef: noteRef{Path: path.String()},

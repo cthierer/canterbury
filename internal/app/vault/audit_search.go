@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cthierer/canterbury/internal/app/auth"
 	"github.com/cthierer/canterbury/internal/domain/audit"
 	domain "github.com/cthierer/canterbury/internal/domain/vault"
 )
@@ -43,11 +44,12 @@ func (searchNotesEventCompletedDetails) EventType() audit.EventType {
 
 func (s *Service) recordSearchNotesCompleted(
 	ctx context.Context,
+	principal auth.Principal,
 	query domain.SearchNotesQuery,
 	page domain.SearchNotesPage,
 	startedAt time.Time,
 ) error {
-	event := s.createEvent(ctx, startedAt)
+	event := createEvent(ctx, principal, startedAt)
 
 	event.Outcome = s.outcome(
 		startedAt,
@@ -56,8 +58,9 @@ func (s *Service) recordSearchNotesCompleted(
 	)
 
 	event.Policy = audit.Policy{
-		MatchedScopes: matchedSearchResultScopes(page, s.principal.Scopes),
-		Decision:      audit.PolicyDecisionAllow,
+		MappingChecksum: principal.MappingChecksum,
+		MatchedScopes:   matchedSearchResultScopes(page, principal.Scopes),
+		Decision:        audit.PolicyDecisionAllow,
 	}
 
 	returnedRefs := returnedSearchResultRefs(page)
@@ -88,14 +91,16 @@ func (searchNotesEventFailedDetails) EventType() audit.EventType {
 
 func (s *Service) recordSearchNotesError(
 	ctx context.Context,
+	principal auth.Principal,
 	query domain.SearchNotesQuery,
 	err error,
 	startedAt time.Time,
 ) error {
-	event := s.createEvent(ctx, startedAt)
+	event := createEvent(ctx, principal, startedAt)
 	status, code, reason := classifySearchNotesError(err)
 
 	event.Outcome = s.outcome(startedAt, status, code)
+	event.Policy.MappingChecksum = principal.MappingChecksum
 
 	event.Details = &searchNotesEventFailedDetails{
 		Query:  searchQueryDetails(query),

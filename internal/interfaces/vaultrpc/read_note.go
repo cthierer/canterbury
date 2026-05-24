@@ -1,4 +1,4 @@
-package connectrpc
+package vaultrpc
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 	vaultv1 "github.com/cthierer/canterbury/gen/go/canterbury/vault/v1"
-	appvault "github.com/cthierer/canterbury/internal/app/vault"
+	domainauth "github.com/cthierer/canterbury/internal/domain/auth"
 	domainvault "github.com/cthierer/canterbury/internal/domain/vault"
 )
 
@@ -53,7 +53,7 @@ func classifyReadNoteError(req *vaultv1.ReadNoteRequest, err error) error {
 		return connect.NewError(connect.CodeNotFound, fmt.Errorf("requested note %q not found", req.Ref.Path))
 	}
 
-	if errors.Is(err, appvault.ErrPermissionDenied) {
+	if errors.Is(err, domainauth.ErrPermissionDenied) {
 		return connect.NewError(connect.CodePermissionDenied, fmt.Errorf("permission denied; check your authorization scopes"))
 	}
 

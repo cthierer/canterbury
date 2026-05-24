@@ -1,4 +1,4 @@
-package connectrpc
+package vaultrpc
 
 import (
 	"context"
@@ -48,9 +48,6 @@ func (interceptor *auditContextInterceptor) WrapUnary(next connect.UnaryFunc) co
 		traceID, _ := interceptor.traceID(req)
 		// TODO log debug about invalid trace ID, but don't quit
 
-		// Actor identity is stubbed until the authentication layer is implemented.
-		actor := audit.Actor{Issuer: "self"}
-
 		client, err := interceptor.client(req)
 		if err != nil {
 			return nil, withRequestID(handleAuditInterceptorError(err), reqID)
@@ -59,7 +56,6 @@ func (interceptor *auditContextInterceptor) WrapUnary(next connect.UnaryFunc) co
 		metadata := auditctx.Metadata{
 			RequestID: reqID,
 			TraceID:   traceID,
-			Actor:     actor,
 			Client:    client,
 		}
 
@@ -104,7 +100,7 @@ func handleAuditInterceptorError(err error) error {
 	case errors.Is(err, audit.ErrInvalidRequestID):
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("request ID is not valid"))
 	default:
-		return connect.NewError(connect.CodeUnknown, errors.New("an unexpected error occurred"))
+		return classifySystemError(err)
 	}
 }
 

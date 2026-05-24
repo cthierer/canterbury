@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/cthierer/canterbury/internal/app/auditctx"
+	"github.com/cthierer/canterbury/internal/app/auth"
 	"github.com/cthierer/canterbury/internal/domain/audit"
 	domain "github.com/cthierer/canterbury/internal/domain/vault"
 )
@@ -43,22 +44,17 @@ func (s *Service) recordEvent(ctx context.Context, event audit.Event) error {
 	return nil
 }
 
-func (s *Service) createEvent(ctx context.Context, occurredAt time.Time) audit.Event {
+func createEvent(ctx context.Context, principal auth.Principal, occurredAt time.Time) audit.Event {
 	metadata, ok := auditctx.MetadataFromContext(ctx)
-
-	actor := metadata.Actor
-	if !ok {
-		actor = audit.Actor{
-			Issuer: "self",
-			Scopes: s.principal.Scopes,
-		}
-	}
-
 	client := metadata.Client
 	if !ok {
-		client = audit.Client{
-			Interface: audit.ClientInterfaceService,
-		}
+		client.Interface = audit.ClientInterfaceService
+	}
+
+	actor := audit.Actor{
+		Issuer:      principal.Issuer,
+		SubjectHash: principal.SubjectHash,
+		Scopes:      principal.Scopes,
 	}
 
 	return audit.Event{

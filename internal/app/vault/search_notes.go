@@ -11,21 +11,30 @@ import (
 func (s *Service) SearchNotes(ctx context.Context, query domain.SearchNotesQuery) (domain.SearchNotesPage, error) {
 	startTime := s.clock.Now()
 
-	query.Access = domain.AccessFilter{
-		ScopesAny: s.principal.Scopes,
+	principal, err := principalFromContext(ctx)
+	if err != nil {
+		return domain.SearchNotesPage{}, fmt.Errorf("extract principal from context: %w", err)
 	}
 
-	page, err := s.repository.SearchNotes(ctx, query)
-	if err != nil {
-		auditErr := s.recordSearchNotesError(ctx, query, err, startTime)
-		if auditErr != nil {
-			return domain.SearchNotesPage{}, fmt.Errorf("record audit log error: %w", auditErr)
+	var page domain.SearchNotesPage
+
+	if len(principal.Scopes) > 0 {
+		query.Access = domain.AccessFilter{
+			ScopesAny: principal.Scopes,
 		}
 
-		return domain.SearchNotesPage{}, fmt.Errorf("search notes: %w", err)
+		page, err = s.repository.SearchNotes(ctx, query)
+		if err != nil {
+			auditErr := s.recordSearchNotesError(ctx, principal, query, err, startTime)
+			if auditErr != nil {
+				return domain.SearchNotesPage{}, fmt.Errorf("record audit log error: %w", auditErr)
+			}
+
+			return domain.SearchNotesPage{}, fmt.Errorf("search notes: %w", err)
+		}
 	}
 
-	err = s.recordSearchNotesCompleted(ctx, query, page, startTime)
+	err = s.recordSearchNotesCompleted(ctx, principal, query, page, startTime)
 	if err != nil {
 		return domain.SearchNotesPage{}, fmt.Errorf("record audit log search: %w", err)
 	}
