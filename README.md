@@ -545,8 +545,8 @@ The planned MVP includes:
 
 - Read-only vault access through MCP-compatible tools.
 - Scope-based frontmatter access control.
-- JWT-based request authentication and principal-to-scope mapping.
-- Vault sync through Obsidian Headless.
+- Production-ready authentication integrations and more robust principal-to-scope policy management.
+- Hardening and operationalizing vault sync through Obsidian Headless.
 - Audit logging outside the vault.
 - Basic indexing with SQLite.
 
