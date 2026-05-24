@@ -1,0 +1,38 @@
+meta {
+  name: SearchNotes - Authorized
+  type: http
+  seq: 4
+  tags: [
+    smoke-auth
+  ]
+}
+
+post {
+  url: {{VaultBaseURI}}/canterbury.vault.v1.VaultService/SearchNotes
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+  authorization: Bearer {{VaultToken}}
+}
+
+body:json {
+  {
+    "query": {
+      "text": "Canterbury"
+    },
+    "pageSize": 10,
+    "sort": "SEARCH_SORT_PATH_ASC"
+  }
+}
+
+tests {
+  const body = typeof res.getBody === 'function' ? res.getBody() : res.body;
+
+  test('searches scoped notes', function () {
+    expect(body.results).to.be.an('array');
+    expect(body.results.some((result) => result.ref.path === 'Projects/Canterbury.md')).to.equal(true);
+  });
+}

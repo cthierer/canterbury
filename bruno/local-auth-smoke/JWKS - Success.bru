@@ -1,0 +1,32 @@
+meta {
+  name: JWKS - Success
+  type: http
+  seq: 1
+  tags: [
+    smoke-auth
+  ]
+}
+
+get {
+  url: {{DevAuthBaseURI}}/.well-known/jwks.json
+  body: none
+  auth: none
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+  followRedirects: true
+  maxRedirects: 5
+}
+
+tests {
+  const status = typeof res.getStatus === 'function' ? res.getStatus() : res.status;
+  const body = typeof res.getBody === 'function' ? res.getBody() : res.body;
+
+  test('returns JWKS', function () {
+    expect(status).to.equal(200);
+    expect(body.keys).to.be.an('array');
+    expect(body.keys.length).to.be.greaterThan(0);
+  });
+}

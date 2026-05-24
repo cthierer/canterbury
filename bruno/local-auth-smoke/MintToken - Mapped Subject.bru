@@ -1,0 +1,45 @@
+meta {
+  name: MintToken - Mapped Subject
+  type: http
+  seq: 2
+  tags: [
+    smoke-auth
+  ]
+}
+
+post {
+  url: {{DevAuthBaseURI}}/canterbury.dev.v1.DevAuthService/MintToken
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "claims": {
+      "subject": "user_123",
+      "audiences": ["canterbury.vault.local"]
+    },
+    "options": {
+      "ttlSeconds": 900
+    }
+  }
+}
+
+script:post-response {
+  const body = typeof res.getBody === 'function' ? res.getBody() : res.body;
+  bru.setVar('VaultToken', body.token.jwt);
+}
+
+tests {
+  const body = typeof res.getBody === 'function' ? res.getBody() : res.body;
+
+  test('mints mapped bearer token', function () {
+    expect(body.token.tokenType).to.equal('Bearer');
+    expect(body.token.jwt).to.be.a('string');
+    expect(body.token.jwt.length).to.be.greaterThan(20);
+  });
+}
