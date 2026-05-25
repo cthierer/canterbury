@@ -16,7 +16,7 @@ const keyDir = join(generatedDir, 'keys')
 
 process.umask(0o077)
 
-ensureCommand('openssl')
+ensureOpenSSL()
 
 await mkdir(certDir, { recursive: true })
 await mkdir(keyDir, { recursive: true })
@@ -95,15 +95,11 @@ if (!existsSync(tlsKey) || !existsSync(tlsCert)) {
 
 const signingKey = join(keyDir, 'pomerium-signing-key.pem')
 if (!existsSync(signingKey)) {
-	execFileSync('openssl', [
-		'ecparam',
-		'-name',
-		'prime256v1',
-		'-genkey',
-		'-noout',
-		'-out',
-		signingKey,
-	])
+	execFileSync(
+		'openssl',
+		['ecparam', '-name', 'prime256v1', '-genkey', '-noout', '-out', signingKey],
+		{ stdio: 'ignore' },
+	)
 	await chmod(signingKey, 0o600)
 }
 
@@ -112,11 +108,11 @@ console.log(`Local environment written to ${envFile}`)
 console.log('Start the stack with: docker compose up --build')
 console.log('Run the smoke test with: make smoke-pomerium')
 
-function ensureCommand(command) {
+function ensureOpenSSL() {
 	try {
-		execFileSync(command, ['version'], { stdio: 'ignore' })
+		execFileSync('openssl', ['version'], { stdio: 'ignore' })
 	} catch {
-		console.error(`missing required command: ${command}`)
+		console.error('missing required command: openssl')
 		process.exit(1)
 	}
 }
