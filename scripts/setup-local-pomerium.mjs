@@ -111,7 +111,9 @@ function ensureOpenSSL() {
 	try {
 		execFileSync('openssl', ['version'], { stdio: 'ignore' })
 	} catch {
-		console.error('missing required command: openssl')
+		console.error(
+			'setup local Pomerium: missing required command openssl; install OpenSSL and retry',
+		)
 		process.exit(1)
 	}
 }
@@ -129,7 +131,7 @@ async function readEnvFile(path) {
 			return {}
 		}
 
-		throw error
+		throw new Error(`read local environment file at ${path}: ${error.message}`)
 	}
 
 	const values = {}
