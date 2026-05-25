@@ -13,7 +13,6 @@ type key struct{}
 type Metadata struct {
 	RequestID audit.RequestID
 	TraceID   audit.TraceID
-	Actor     audit.Actor
 	Client    audit.Client
 }
 

@@ -2,3 +2,5 @@ name: local
 variables:
   - name: BaseURI
     value: http://127.0.0.1:50051
+  - name: VaultToken
+    value: ''

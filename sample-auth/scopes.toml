@@ -1,0 +1,4 @@
+[[subjects]]
+issuer = "devauth.canterbury.local"
+subject = "user_123"
+scopes = ["personal-agent"]

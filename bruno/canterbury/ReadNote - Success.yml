@@ -8,6 +8,9 @@ grpc:
   method: /canterbury.vault.v1.VaultService/ReadNote
   methodType: unary
   protoFilePath: ../../api/canterbury/vault/v1/vault.proto
+  metadata:
+    - name: authorization
+      value: Bearer {{VaultToken}}
   message: |-
     {
       "ref": {

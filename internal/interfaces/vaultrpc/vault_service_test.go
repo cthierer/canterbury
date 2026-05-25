@@ -1,4 +1,4 @@
-package connectrpc
+package vaultrpc
 
 import (
 	"testing"

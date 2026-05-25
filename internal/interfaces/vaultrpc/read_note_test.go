@@ -1,4 +1,4 @@
-package connectrpc
+package vaultrpc
 
 import (
 	"context"
@@ -8,7 +8,7 @@ import (
 
 	"connectrpc.com/connect"
 	vaultv1 "github.com/cthierer/canterbury/gen/go/canterbury/vault/v1"
-	appvault "github.com/cthierer/canterbury/internal/app/vault"
+	domainauth "github.com/cthierer/canterbury/internal/domain/auth"
 	domainvault "github.com/cthierer/canterbury/internal/domain/vault"
 )
 
@@ -80,8 +80,13 @@ func TestVaultServiceHandlerReadNote(t *testing.T) {
 		},
 		{
 			name:    "maps permission denied",
-			readErr: fmt.Errorf("authorize note: %w", appvault.ErrPermissionDenied),
+			readErr: fmt.Errorf("authorize note: %w", domainauth.ErrPermissionDenied),
 			want:    connect.CodePermissionDenied,
+		},
+		{
+			name:    "maps missing principal",
+			readErr: fmt.Errorf("extract principal: %w", domainauth.ErrMissingPrincipal),
+			want:    connect.CodeUnauthenticated,
 		},
 		{
 			name:    "maps invalid note path",

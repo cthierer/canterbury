@@ -21,6 +21,7 @@ help:
 	@printf '%s\n' '  make format          Format repository files'
 	@printf '%s\n' '  make test            Run Go tests'
 	@printf '%s\n' '  make lint            Run Go linting'
+	@printf '%s\n' '  make smoke-auth      Run local auth smoke tests'
 	@printf '%s\n' '  make proto-generate  Regenerate protobuf outputs'
 
 .PHONY: setup
@@ -65,6 +66,10 @@ test:
 .PHONY: lint
 lint: tools-go
 	GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOLANGCI_LINT_CACHE=$(GOLANGCI_LINT_CACHE) npm run lint:go
+
+.PHONY: smoke-auth
+smoke-auth:
+	npm run smoke:auth
 
 .PHONY: proto-generate
 proto-generate:

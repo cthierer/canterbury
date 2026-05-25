@@ -1,0 +1,36 @@
+meta {
+  name: ReadNote - Missing Bearer
+  type: http
+  seq: 5
+  tags: [
+    smoke-auth
+  ]
+}
+
+post {
+  url: {{VaultBaseURI}}/canterbury.vault.v1.VaultService/ReadNote
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+body:json {
+  {
+    "ref": {
+      "path": "Projects/Canterbury.md"
+    }
+  }
+}
+
+tests {
+  const status = typeof res.getStatus === 'function' ? res.getStatus() : res.status;
+  const body = typeof res.getBody === 'function' ? res.getBody() : res.body;
+
+  test('rejects missing bearer token', function () {
+    expect(status).to.equal(401);
+    expect(body.code).to.equal('unauthenticated');
+  });
+}

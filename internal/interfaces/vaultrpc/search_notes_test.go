@@ -1,4 +1,4 @@
-package connectrpc
+package vaultrpc
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 
 	"connectrpc.com/connect"
 	vaultv1 "github.com/cthierer/canterbury/gen/go/canterbury/vault/v1"
+	domainauth "github.com/cthierer/canterbury/internal/domain/auth"
 	domainvault "github.com/cthierer/canterbury/internal/domain/vault"
 )
 
@@ -213,6 +214,16 @@ func TestVaultServiceHandlerSearchNotes(t *testing.T) {
 			name:      "maps unavailable vault",
 			searchErr: fmt.Errorf("search repository: %w", domainvault.ErrVaultUnavailable),
 			want:      connect.CodeUnavailable,
+		},
+		{
+			name:      "maps permission denied",
+			searchErr: fmt.Errorf("search repository: %w", domainauth.ErrPermissionDenied),
+			want:      connect.CodePermissionDenied,
+		},
+		{
+			name:      "maps missing principal",
+			searchErr: fmt.Errorf("extract principal: %w", domainauth.ErrMissingPrincipal),
+			want:      connect.CodeUnauthenticated,
 		},
 		{
 			name:      "maps cancellation",

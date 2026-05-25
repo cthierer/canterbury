@@ -1,0 +1,37 @@
+meta {
+  name: ReadNote - Wrong Audience
+  type: http
+  seq: 7
+  tags: [
+    smoke-auth
+  ]
+}
+
+post {
+  url: {{VaultBaseURI}}/canterbury.vault.v1.VaultService/ReadNote
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+  authorization: Bearer {{WrongAudienceToken}}
+}
+
+body:json {
+  {
+    "ref": {
+      "path": "Projects/Canterbury.md"
+    }
+  }
+}
+
+tests {
+  const status = typeof res.getStatus === 'function' ? res.getStatus() : res.status;
+  const body = typeof res.getBody === 'function' ? res.getBody() : res.body;
+
+  test('rejects wrong audience token', function () {
+    expect(status).to.equal(401);
+    expect(body.code).to.equal('unauthenticated');
+  });
+}

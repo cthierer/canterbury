@@ -4,15 +4,15 @@ info:
   seq: 1
 
 grpc:
-  url: "{{BaseURI}}"
+  url: '{{BaseURI}}'
   method: /canterbury.dev.v1.DevAuthService/MintToken
   methodType: unary
   protoFilePath: ../../api/canterbury/dev/v1/auth.proto
   message: |-
     {
       "claims": {
-        "subject": "me",
-        "audiences": ["test"]
+        "subject": "user_123",
+        "audiences": ["canterbury.vault.local"]
       },
       "options": {}
     }
