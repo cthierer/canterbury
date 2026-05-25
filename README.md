@@ -140,7 +140,7 @@ make check
 2. Generate local Pomerium config, certificates, and secrets:
 
 ```bash
-scripts/setup-local-pomerium.sh
+scripts/setup-local-pomerium.mjs
 ```
 
 3. Build the default local stack:

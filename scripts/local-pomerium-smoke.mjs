@@ -21,7 +21,7 @@ const dexClientSecret = process.env.DEX_CLIENT_SECRET
 const testPassword = process.env.DEX_TEST_PASSWORD ?? 'password'
 
 if (!dexClientSecret) {
-	throw new Error('missing DEX_CLIENT_SECRET; run scripts/setup-local-pomerium.sh first')
+	throw new Error('missing DEX_CLIENT_SECRET; run scripts/setup-local-pomerium.mjs first')
 }
 
 ensurePomeriumCACert()
@@ -82,7 +82,7 @@ function ensurePomeriumCACert() {
 
 	if (!existsSync(pomeriumCACert)) {
 		throw new Error(
-			`missing Pomerium CA certificate at ${pomeriumCACert}; run scripts/setup-local-pomerium.sh first`,
+			`missing Pomerium CA certificate at ${pomeriumCACert}; run scripts/setup-local-pomerium.mjs first`,
 		)
 	}
 
