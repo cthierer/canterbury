@@ -261,15 +261,19 @@ async function readHostAuditEvents(directory) {
 }
 
 async function readContainerAuditEvents() {
-	const { stdout } = await execFileAsync('docker', [
-		'compose',
-		'exec',
-		'-T',
-		'vault-service',
-		'sh',
-		'-c',
-		'find /audit -type f -name "*.jsonl" -exec cat {} +',
-	])
+	const { stdout } = await execFileAsync(
+		'docker',
+		[
+			'compose',
+			'exec',
+			'-T',
+			'vault-service',
+			'sh',
+			'-c',
+			'find /audit -type f -name "*.jsonl" -exec cat {} +',
+		],
+		{ cwd: root },
+	)
 
 	return parseJSONLines(stdout)
 }
