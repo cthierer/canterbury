@@ -39,6 +39,7 @@ services:
       dockerfile: Dockerfile.vault-service
     image: canterbury-vault-service:latest
     container_name: canterbury-vault-service
+    user: '${UID:-1000}:${GID:-1000}'
     restart: on-failure
     depends_on:
       - pomerium

@@ -20,6 +20,12 @@ RUN apt-get update \
 
 COPY --from=build /out/vault-service /usr/local/bin/vault-service
 
+RUN useradd -m -u 10001 canterbury \
+	&& mkdir -p /audit \
+	&& chown canterbury:canterbury /audit
+
 EXPOSE 50051
+
+USER canterbury
 
 ENTRYPOINT ["vault-service"]

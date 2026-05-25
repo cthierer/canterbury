@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { randomBytes } from 'node:crypto'
-import { chmod, mkdir, readFile, writeFile } from 'node:fs/promises'
+import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
@@ -11,6 +11,7 @@ const rootDir = dirname(scriptDir)
 const localDir = join(rootDir, 'deploy', 'local-pomerium')
 const generatedDir = join(localDir, '.generated')
 const envFile = join(localDir, 'local.env')
+const auditDir = join(rootDir, 'audit')
 const certDir = join(generatedDir, 'certs')
 const keyDir = join(generatedDir, 'keys')
 
@@ -20,6 +21,7 @@ ensureOpenSSL()
 
 await mkdir(certDir, { recursive: true })
 await mkdir(keyDir, { recursive: true })
+await mkdir(auditDir, { recursive: true })
 
 const currentEnv = await readEnvFile(envFile)
 const localEnv = {
@@ -31,12 +33,11 @@ const localEnv = {
 	POMERIUM_SHARED_SECRET: currentEnv.POMERIUM_SHARED_SECRET ?? randomBase64(),
 }
 
-await writeFile(
+await writeSecretFile(
 	envFile,
 	`${Object.entries(localEnv)
 		.map(([key, value]) => `${key}=${value}`)
 		.join('\n')}\n`,
-	{ mode: 0o600 },
 )
 
 await renderTemplate(
@@ -156,5 +157,18 @@ async function renderTemplate(source, destination, replacements) {
 		content = content.replaceAll(placeholder, value)
 	}
 
-	await writeFile(destination, content, { mode: 0o600 })
+	await writeSecretFile(destination, content)
+}
+
+async function writeSecretFile(destination, content) {
+	const temporary = `${destination}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
+	try {
+		await writeFile(temporary, content, { mode: 0o600 })
+		await chmod(temporary, 0o600)
+		await rename(temporary, destination)
+		await chmod(destination, 0o600)
+	} catch (error) {
+		await unlink(temporary).catch(() => undefined)
+		throw error
+	}
 }
