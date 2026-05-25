@@ -105,7 +105,7 @@ if (!existsSync(signingKey)) {
 
 console.log(`Local Pomerium files generated in ${generatedDir}`)
 console.log(`Local environment written to ${envFile}`)
-console.log('Start the stack with: docker compose up --build')
+console.log(`Start the stack with: ${composeUserEnv()} docker compose up --build`)
 console.log('Run the smoke test with: make smoke-pomerium')
 
 function ensureOpenSSL() {
@@ -119,6 +119,14 @@ function ensureOpenSSL() {
 
 function randomBase64() {
 	return randomBytes(32).toString('base64')
+}
+
+function composeUserEnv() {
+	if (typeof process.getuid === 'function' && typeof process.getgid === 'function') {
+		return `CANTERBURY_UID=${process.getuid()} CANTERBURY_GID=${process.getgid()}`
+	}
+
+	return 'CANTERBURY_UID=$(id -u) CANTERBURY_GID=$(id -g)'
 }
 
 async function readEnvFile(path) {

@@ -146,7 +146,7 @@ scripts/setup-local-pomerium.mjs
 3. Build the default local stack:
 
 ```bash
-docker compose build
+CANTERBURY_UID="$(id -u)" CANTERBURY_GID="$(id -g)" docker compose build
 ```
 
 ## Configure The Sync Worker
@@ -227,8 +227,13 @@ The default Docker Compose stack starts a local deployed-style auth path:
 Start it from the repository root:
 
 ```bash
-docker compose up --build
+CANTERBURY_UID="$(id -u)" CANTERBURY_GID="$(id -g)" docker compose up --build
 ```
+
+Those `CANTERBURY_UID` and `CANTERBURY_GID` values make audit files in the
+bind-mounted `./audit` directory owned by your host user. When both values are
+`1000`, Docker Compose's local defaults already match; setting them explicitly is
+safer on systems that use different host IDs.
 
 The protected vault route is available at:
 

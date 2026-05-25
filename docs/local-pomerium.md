@@ -28,8 +28,14 @@ script any time you need to recreate the local environment in one step.
 Run the local stack from the repository root:
 
 ```bash
-docker compose up --build
+CANTERBURY_UID="$(id -u)" CANTERBURY_GID="$(id -g)" docker compose up --build
 ```
+
+The `CANTERBURY_UID` and `CANTERBURY_GID` values make the vault-service
+container write local audit files as your host user. If your host user and group
+IDs are both `1000`, Docker Compose's default interpolation matches this value,
+but exporting the values keeps the bind-mounted `./audit` directory predictable
+on other systems.
 
 The default Compose services are:
 
