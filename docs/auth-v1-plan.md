@@ -64,8 +64,9 @@ scopes = ["personal-agent", "public-site"]
 Rules:
 
 - Match by exact `issuer` and `subject`.
-- Unknown subjects map to zero scopes and are denied by the existing
-  default-deny policy.
+- Unknown subjects fail principal resolution and are rejected at the auth
+  boundary.
+- Each mapped subject must grant at least one scope.
 - Scope values must pass `vault.NewScope`.
 - Mapping file lives outside the vault.
 - Load on startup only for V1.
@@ -141,10 +142,11 @@ to context so vault read/search events contain:
 - `actor.scopes`
 - `policy.mapping_checksum`
 
-Unknown subjects that validate successfully but map to zero Canterbury scopes
-are authenticated. They should not produce `auth.failed`; they should continue
-to the vault app with zero scopes and receive policy denials such as
-`vault.read.denied` or empty search results according to app behavior.
+Subjects that validate successfully but have no TOML mapping are not Canterbury
+principals. They should produce `auth.failed` with a principal resolution reason
+and return `Unauthenticated`. Mapped principals whose scopes do not match a note's
+`access.scopes` continue to the vault app and receive policy denials such as
+`vault.read.denied` or `PermissionDenied`.
 
 If an auth failure audit event cannot be written, the request must still be
 rejected. Prefer returning an internal error only when doing so does not leak
@@ -185,6 +187,8 @@ the auth boundary because audit recording failed.
    - Interceptor authenticates, maps scopes, and attaches the principal to
      context.
    - Missing or invalid tokens return `Unauthenticated`.
+   - Valid tokens without a TOML `(issuer, subject)` mapping return
+     `Unauthenticated`.
    - Valid tokens with no matching note scope return `PermissionDenied` from
      app policy.
    - Interceptor records `auth.failed` events before returning
@@ -214,8 +218,8 @@ verifier errors that may contain claims or token fragments.
 ## Test Plan
 
 - Config: missing issuer, audience, JWKS, or mapping fails startup.
-- Mapping: valid mapping, unknown subject, invalid TOML, invalid scope, and
-  duplicate subject behavior.
+- Mapping: valid mapping, unknown subject, empty scopes, invalid TOML, invalid
+  scope, and duplicate subject behavior.
 - JWT: missing bearer, malformed header, bad signature, wrong issuer, wrong
   audience, expired token, and valid token.
 - App: no principal denied, matching scope allowed, non-matching scope denied.
@@ -225,8 +229,8 @@ verifier errors that may contain claims or token fragments.
   claim data.
 - Audit: read/search events include authenticated actor issuer, subject hash,
   scopes, and mapping checksum.
-- Audit: unknown mapped subjects produce zero-scope principals rather than
-  `auth.failed`.
+- Audit: unknown subjects produce `auth.failed` with a principal resolution
+  reason rather than zero-scope principals.
 - Audit: auth failure audit write errors never allow the request to proceed.
 - Full check: run `make check`.
 
