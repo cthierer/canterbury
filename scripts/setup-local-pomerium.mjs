@@ -164,7 +164,6 @@ async function writeSecretFile(destination, content) {
 	const temporary = `${destination}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
 	try {
 		await writeFile(temporary, content, { mode: 0o600 })
-		await chmod(temporary, 0o600)
 		await rename(temporary, destination)
 		await chmod(destination, 0o600)
 	} catch (error) {
