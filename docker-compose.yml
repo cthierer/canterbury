@@ -1,5 +1,64 @@
 services:
+  dex:
+    image: dexidp/dex:v2.45.1
+    container_name: canterbury-dex
+    command: ['dex', 'serve', '/etc/dex/config.yaml']
+    restart: 'no'
+    ports:
+      - '5556:5556'
+    volumes:
+      - ./deploy/local-pomerium/dex-config.yaml:/etc/dex/config.yaml:ro
+    networks:
+      default:
+        aliases:
+          - dex.localhost.pomerium.io
+
+  pomerium:
+    image: pomerium/pomerium:v0.32.7
+    container_name: canterbury-pomerium
+    restart: 'no'
+    depends_on:
+      - dex
+    environment:
+      SSL_CERT_FILE: /pomerium/certs/pomerium-local.crt
+    ports:
+      - '8443:8443'
+    volumes:
+      - ./deploy/local-pomerium/pomerium-config.yaml:/pomerium/config.yaml:ro
+      - ./deploy/local-pomerium/certs:/pomerium/certs:ro
+      - ./deploy/local-pomerium/keys:/pomerium/keys:ro
+    networks:
+      default:
+        aliases:
+          - authenticate.localhost.pomerium.io
+          - vault.localhost.pomerium.io
+
+  vault-service:
+    build:
+      context: .
+      dockerfile: Dockerfile.vault-service
+    image: canterbury-vault-service:latest
+    container_name: canterbury-vault-service
+    restart: on-failure
+    depends_on:
+      - pomerium
+    environment:
+      VAULT_SERVICE_ADDR: 0.0.0.0:50051
+      VAULT_SERVICE_ROOT: /vault
+      VAULT_SERVICE_AUTH_ISSUER: vault.localhost.pomerium.io
+      VAULT_SERVICE_AUTH_AUDIENCE: vault.localhost.pomerium.io
+      VAULT_SERVICE_AUTH_JWKS_URL: https://vault.localhost.pomerium.io:8443/.well-known/pomerium/jwks.json
+      VAULT_SERVICE_AUTH_MAPPING_FILE: /auth/scopes.toml
+      VAULT_SERVICE_AUDIT_ROOT: /audit
+      VAULT_SERVICE_AUDIT_WRITER_ID: local-pomerium
+      VAULT_SERVICE_AUDIT_HMAC_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+    volumes:
+      - ./sample-vault:/vault:ro
+      - ./sample-auth:/auth:ro
+      - ./audit:/audit
+
   obsidian-sync:
+    profiles: ['sync']
     build:
       context: .
       dockerfile: Dockerfile.sync

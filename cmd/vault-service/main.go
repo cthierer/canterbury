@@ -126,7 +126,7 @@ func run() error {
 		return fmt.Errorf("initialize auth scope mapper: %w", err)
 	}
 
-	tokenVerifier, err := authjwt.NewVerifier(ctx, authJWKSURL, []string{"EdDSA"})
+	tokenVerifier, err := authjwt.NewVerifier(ctx, authJWKSURL, []string{"EdDSA", "ES256"})
 	if err != nil {
 		return fmt.Errorf("initialize auth JWT verifier: %w", err)
 	}

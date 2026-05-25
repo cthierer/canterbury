@@ -18,6 +18,8 @@ Canterbury is in early development. The current implementation includes:
 - Docker Compose configuration.
 - A local Go vault service that reads and searches scoped Markdown notes from a
   filesystem vault mirror.
+- Local Docker Compose stack with Dex, Pomerium Core, and the vault service for
+  testing the deployed-style auth gateway flow.
 - JWT-based request authentication with JWKS verification and TOML scope
   mappings.
 - Scope-based authorization using note-declared access scopes and authenticated
@@ -32,8 +34,8 @@ Planned or incomplete components include:
 
 - MCP-compatible tools for AI agents.
 - Indexing and plugin-style vault operations.
-- Production identity-provider integration beyond the local development auth
-  helper.
+- Production identity-provider integration beyond the local Pomerium/Dex and
+  development auth helpers.
 
 ## Project Description
 
@@ -77,9 +79,10 @@ The intended system has several components:
   events and content.
 
 The current repository implements the sync worker, the first vault service read
-and search paths, JWT-authenticated local access, and filesystem JSONL audit
-logging for read, search, and authentication failure events. MCP tools,
-indexing, and write workflows are not implemented yet.
+and search paths, JWT-authenticated local access, a local Pomerium/Dex gateway
+stack, and filesystem JSONL audit logging for read, search, and authentication
+failure events. MCP tools, indexing, and write workflows are not implemented
+yet.
 
 See [Canterbury Architecture](docs/architecture.md) for the planned Go package
 structure and dependency boundaries.
@@ -135,7 +138,7 @@ make check
 
 1. Clone this repository.
 2. Copy `sync/.env.example` to `sync/.env`.
-3. Build the sync worker image:
+3. Build the default local stack:
 
 ```bash
 docker compose build
@@ -180,13 +183,13 @@ secrets.
 Start the sync worker:
 
 ```bash
-docker compose up --build
+docker compose --profile sync up --build obsidian-sync
 ```
 
 Run it in the background:
 
 ```bash
-docker compose up --build -d
+docker compose --profile sync up --build -d obsidian-sync
 ```
 
 Stop it:
@@ -205,6 +208,34 @@ volumes:
 This is the portable default. If you replace it with a host bind mount such as
 `./vault:/vault`, you must ensure the container user can write to that host
 directory.
+
+## Run The Local Pomerium Stack
+
+The default Docker Compose stack starts a local deployed-style auth path:
+
+- Dex as a self-contained OIDC provider.
+- Pomerium Core as the identity-aware gateway.
+- The Canterbury vault service behind Pomerium.
+
+Start it from the repository root:
+
+```bash
+docker compose up --build
+```
+
+The protected vault route is available at:
+
+```text
+https://vault.localhost.pomerium.io:8443
+```
+
+The stack uses local-only fixture keys, a self-signed certificate, and static
+Dex users. See [Local Pomerium Stack](docs/local-pomerium.md) for account
+details, manual testing steps, and the opt-in smoke test:
+
+```bash
+make smoke-pomerium
+```
 
 ## Run The Vault Service
 
@@ -574,6 +605,7 @@ storage, and treat host bind mounts as local development overrides.
 - [`obsidian-headless`](https://www.npmjs.com/package/obsidian-headless)
 - [Obsidian Sync](https://obsidian.md/sync)
 - [Docker Compose](https://docs.docker.com/compose/)
+- [Local Pomerium Stack](docs/local-pomerium.md)
 - [The Good Docs Project README template guide](https://www.thegooddocsproject.dev/template/readme)
 
 ## How To Get Help

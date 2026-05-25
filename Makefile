@@ -22,6 +22,7 @@ help:
 	@printf '%s\n' '  make test            Run Go tests'
 	@printf '%s\n' '  make lint            Run Go linting'
 	@printf '%s\n' '  make smoke-auth      Run local auth smoke tests'
+	@printf '%s\n' '  make smoke-pomerium  Run local Pomerium stack smoke tests'
 	@printf '%s\n' '  make proto-generate  Regenerate protobuf outputs'
 
 .PHONY: setup
@@ -70,6 +71,10 @@ lint: tools-go
 .PHONY: smoke-auth
 smoke-auth:
 	npm run smoke:auth
+
+.PHONY: smoke-pomerium
+smoke-pomerium:
+	npm run smoke:pomerium
 
 .PHONY: proto-generate
 proto-generate:

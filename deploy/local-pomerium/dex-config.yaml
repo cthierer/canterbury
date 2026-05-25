@@ -1,0 +1,33 @@
+issuer: http://dex.localhost.pomerium.io:5556/dex
+
+storage:
+  type: memory
+
+web:
+  http: 0.0.0.0:5556
+
+staticClients:
+  - id: pomerium
+    secret: pomerium-local-client-secret
+    name: Canterbury Local Pomerium
+    redirectURIs:
+      - https://authenticate.localhost.pomerium.io:8443/oauth2/callback
+
+enablePasswordDB: true
+
+oauth2:
+  passwordConnector: local
+
+staticPasswords:
+  - email: agent@canterbury.local
+    hash: '$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W'
+    username: agent
+    userID: user_123
+  - email: public@canterbury.local
+    hash: '$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W'
+    username: public
+    userID: public_reader
+  - email: unmapped@canterbury.local
+    hash: '$2a$10$2b2cU8CPhOTaGrs1HRQuAueS7JTT5ZHsHSzYiFPm1leZck7Mc8T4W'
+    username: unmapped
+    userID: unmapped_user
