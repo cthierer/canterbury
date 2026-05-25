@@ -38,7 +38,6 @@ await writeFile(
 		.join('\n')}\n`,
 	{ mode: 0o600 },
 )
-await chmod(envFile, 0o600)
 
 await renderTemplate(
 	join(localDir, 'dex-config.template.yaml'),
