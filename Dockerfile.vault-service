@@ -18,9 +18,6 @@ RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ca-certificates \
 	&& rm -rf /var/lib/apt/lists/*
 
-COPY deploy/local-pomerium/certs/pomerium-local.crt /usr/local/share/ca-certificates/canterbury-local-pomerium.crt
-RUN update-ca-certificates
-
 COPY --from=build /out/vault-service /usr/local/bin/vault-service
 
 EXPOSE 50051

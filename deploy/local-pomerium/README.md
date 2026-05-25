@@ -1,7 +1,8 @@
-# Local Pomerium Fixtures
+# Local Pomerium Setup
 
-This directory contains development-only configuration and trust material for
-running Canterbury behind Pomerium with Docker Compose.
+This directory contains development-only templates for running Canterbury behind
+Pomerium with Docker Compose.
 
-The private keys, client secret, bcrypt password hashes, and TLS certificate are
-local fixtures only. Do not reuse them for real deployments.
+Run `scripts/setup-local-pomerium.sh` from the repository root to generate the
+local-only config, private keys, TLS certificate, and shared secrets. Generated
+files are written to `.generated/` and `local.env`, which are ignored by Git.

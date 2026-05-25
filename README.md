@@ -137,7 +137,12 @@ make check
 ## Install Canterbury
 
 1. Clone this repository.
-2. Copy `sync/.env.example` to `sync/.env`.
+2. Generate local Pomerium config, certificates, and secrets:
+
+```bash
+scripts/setup-local-pomerium.sh
+```
+
 3. Build the default local stack:
 
 ```bash
@@ -145,6 +150,8 @@ docker compose build
 ```
 
 ## Configure The Sync Worker
+
+This step is only required when running the optional `sync` profile.
 
 Copy the example environment file:
 

@@ -7,3 +7,5 @@ node_modules/
 sync/.env
 sync/node_modules/
 /audit/
+deploy/local-pomerium/.generated/
+deploy/local-pomerium/local.env

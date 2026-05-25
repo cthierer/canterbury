@@ -7,11 +7,23 @@ authenticates the caller, issues its own signed JWT assertion, rewrites that
 assertion into `Authorization: Bearer <jwt>`, and the vault service validates it
 with Pomerium's JWKS before applying Canterbury scope policy.
 
-The stack is for development only. The committed Pomerium keys, TLS certificate,
-Dex client secret, and Dex password hashes under `deploy/local-pomerium/` are
-fixtures and must not be reused outside local testing.
+The stack is for development only. Pomerium private keys, the TLS certificate,
+the Dex client secret, and shared secrets are generated locally and must not be
+reused outside local testing.
 
 ## Start The Stack
+
+Generate the local-only Pomerium config, certificates, keys, and shared secrets
+first:
+
+```bash
+scripts/setup-local-pomerium.sh
+```
+
+The setup script writes generated files under
+`deploy/local-pomerium/.generated/` and secrets to
+`deploy/local-pomerium/local.env`. Both paths are ignored by Git. Re-run the
+script any time you need to recreate the local environment in one step.
 
 Run the local stack from the repository root:
 
@@ -29,7 +41,8 @@ The default Compose services are:
 
 The Pomerium route uses a self-signed local certificate for
 `*.localhost.pomerium.io`. Browsers and command-line tools will warn unless you
-trust the certificate or explicitly allow it for local testing.
+trust `deploy/local-pomerium/.generated/certs/pomerium-local.crt` or explicitly
+allow it for local testing.
 
 The sync worker is no longer part of the default stack. To run it, use the
 explicit `sync` profile:
@@ -68,9 +81,10 @@ scopes = ["personal-agent"]
 ```
 
 To add a local account, add a `staticPasswords` entry in
-`deploy/local-pomerium/dex-config.yaml`, choose a stable `userID`, sign in
-through Pomerium once, then read Pomerium's `user` value from the authorize log
-and add a matching `(issuer, subject)` entry to `sample-auth/scopes.toml`.
+`deploy/local-pomerium/dex-config.template.yaml`, re-run
+`scripts/setup-local-pomerium.sh`, choose a stable `userID`, sign in through
+Pomerium once, then read Pomerium's `user` value from the authorize log and add
+a matching `(issuer, subject)` entry to `sample-auth/scopes.toml`.
 
 ## Smoke Test
 
@@ -99,13 +113,13 @@ The vault service writes local JSONL audit records to `./audit`. For a quick
 look at authentication failures:
 
 ```bash
-grep '"event_type":"auth.failed"' audit/*.jsonl
+find audit -type f -name '*.jsonl' -exec grep -h '"event_type":"auth.failed"' {} +
 ```
 
 For read and authorization-denial events:
 
 ```bash
-grep '"event_type":"vault.read' audit/*.jsonl
+find audit -type f -name '*.jsonl' -exec grep -h '"event_type":"vault.read' {} +
 ```
 
 The unmapped Dex account should produce an `auth.failed` event with a denied

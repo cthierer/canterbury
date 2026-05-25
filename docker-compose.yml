@@ -7,7 +7,7 @@ services:
     ports:
       - '5556:5556'
     volumes:
-      - ./deploy/local-pomerium/dex-config.yaml:/etc/dex/config.yaml:ro
+      - ./deploy/local-pomerium/.generated/dex-config.yaml:/etc/dex/config.yaml:ro
     networks:
       default:
         aliases:
@@ -24,9 +24,9 @@ services:
     ports:
       - '8443:8443'
     volumes:
-      - ./deploy/local-pomerium/pomerium-config.yaml:/pomerium/config.yaml:ro
-      - ./deploy/local-pomerium/certs:/pomerium/certs:ro
-      - ./deploy/local-pomerium/keys:/pomerium/keys:ro
+      - ./deploy/local-pomerium/.generated/pomerium-config.yaml:/pomerium/config.yaml:ro
+      - ./deploy/local-pomerium/.generated/certs:/pomerium/certs:ro
+      - ./deploy/local-pomerium/.generated/keys:/pomerium/keys:ro
     networks:
       default:
         aliases:
@@ -42,6 +42,8 @@ services:
     restart: on-failure
     depends_on:
       - pomerium
+    env_file:
+      - ./deploy/local-pomerium/local.env
     environment:
       VAULT_SERVICE_ADDR: 0.0.0.0:50051
       VAULT_SERVICE_ROOT: /vault
@@ -51,11 +53,12 @@ services:
       VAULT_SERVICE_AUTH_MAPPING_FILE: /auth/scopes.toml
       VAULT_SERVICE_AUDIT_ROOT: /audit
       VAULT_SERVICE_AUDIT_WRITER_ID: local-pomerium
-      VAULT_SERVICE_AUDIT_HMAC_KEY: MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
+      SSL_CERT_FILE: /pomerium-ca/pomerium-local.crt
     volumes:
       - ./sample-vault:/vault:ro
       - ./sample-auth:/auth:ro
       - ./audit:/audit
+      - ./deploy/local-pomerium/.generated/certs/pomerium-local.crt:/pomerium-ca/pomerium-local.crt:ro
 
   obsidian-sync:
     profiles: ['sync']

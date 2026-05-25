@@ -1,19 +1,30 @@
+import { existsSync } from 'node:fs'
 import { readFile, readdir } from 'node:fs/promises'
-import { execFile } from 'node:child_process'
+import { execFile, spawnSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0'
-
 const execFileAsync = promisify(execFile)
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
+const localPomeriumDir = join(root, 'deploy', 'local-pomerium')
+await loadLocalEnv(join(localPomeriumDir, 'local.env'))
+
 const dexBaseURL = process.env.DEX_BASE_URL ?? 'http://127.0.0.1:5556/dex'
 const pomeriumBaseURL = process.env.POMERIUM_BASE_URL ?? 'https://vault.localhost.pomerium.io:8443'
+const pomeriumCACert =
+	process.env.POMERIUM_CA_CERT ??
+	join(localPomeriumDir, '.generated', 'certs', 'pomerium-local.crt')
 const auditRoot = process.env.VAULT_SERVICE_AUDIT_ROOT ?? join(root, 'audit')
 const dexClientID = process.env.DEX_CLIENT_ID ?? 'pomerium'
-const dexClientSecret = process.env.DEX_CLIENT_SECRET ?? 'pomerium-local-client-secret'
+const dexClientSecret = process.env.DEX_CLIENT_SECRET
 const testPassword = process.env.DEX_TEST_PASSWORD ?? 'password'
+
+if (!dexClientSecret) {
+	throw new Error('missing DEX_CLIENT_SECRET; run scripts/setup-local-pomerium.sh first')
+}
+
+ensurePomeriumCACert()
 
 await waitForHTTP(`${dexBaseURL}/.well-known/openid-configuration`, 'Dex discovery')
 await waitForHTTP(`${pomeriumBaseURL}/.well-known/pomerium/jwks.json`, 'Pomerium JWKS')
@@ -36,6 +47,55 @@ if (missingBearer.status >= 200 && missingBearer.status < 300) {
 }
 
 console.log('local Pomerium smoke passed')
+
+async function loadLocalEnv(path) {
+	let data
+	try {
+		data = await readFile(path, 'utf8')
+	} catch (error) {
+		if (error.code === 'ENOENT') {
+			return
+		}
+
+		throw error
+	}
+
+	for (const line of data.split('\n')) {
+		const trimmed = line.trim()
+		if (trimmed === '' || trimmed.startsWith('#')) {
+			continue
+		}
+
+		const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(trimmed)
+		if (!match || process.env[match[1]] !== undefined) {
+			continue
+		}
+
+		process.env[match[1]] = match[2]
+	}
+}
+
+function ensurePomeriumCACert() {
+	if (!pomeriumBaseURL.startsWith('https://') || process.env.NODE_EXTRA_CA_CERTS) {
+		return
+	}
+
+	if (!existsSync(pomeriumCACert)) {
+		throw new Error(
+			`missing Pomerium CA certificate at ${pomeriumCACert}; run scripts/setup-local-pomerium.sh first`,
+		)
+	}
+
+	const result = spawnSync(process.execPath, process.argv.slice(1), {
+		stdio: 'inherit',
+		env: {
+			...process.env,
+			NODE_EXTRA_CA_CERTS: pomeriumCACert,
+		},
+	})
+
+	process.exit(result.status ?? 1)
+}
 
 async function mintIDToken(username) {
 	const body = new URLSearchParams({
