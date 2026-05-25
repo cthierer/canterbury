@@ -41,6 +41,9 @@ func NewScopeMapper(ctx context.Context, source MappingSource) (*ScopeMapper, er
 		if _, exists := lookup[key]; exists {
 			return nil, fmt.Errorf("duplicate scope mapping for issuer %q, subject %q", issuer, subject)
 		}
+		if len(mapping.Scopes) == 0 {
+			return nil, fmt.Errorf("scope mapping for issuer %q, subject %q must include at least one scope", issuer, subject)
+		}
 
 		lookup[key] = append([]vault.Scope(nil), mapping.Scopes...)
 	}

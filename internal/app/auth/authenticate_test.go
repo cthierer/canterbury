@@ -152,7 +152,7 @@ func TestAuthenticatorAuthenticatePassesTokenRequirements(t *testing.T) {
 	}
 }
 
-func TestAuthenticatorAuthenticateReturnsEmptyScopesForUnknownSubject(t *testing.T) {
+func TestAuthenticatorAuthenticateRejectsUnknownSubject(t *testing.T) {
 	authenticator := newTestAuthenticator(t, fakeTokenVerifier{
 		claims: TokenClaims{
 			Issuer:  "https://auth.example.test",
@@ -160,17 +160,13 @@ func TestAuthenticatorAuthenticateReturnsEmptyScopesForUnknownSubject(t *testing
 		},
 	})
 
-	got, err := authenticator.Authenticate(context.Background(), "test-token")
-	if err != nil {
-		t.Fatalf("Authenticate() error = %v", err)
+	_, err := authenticator.Authenticate(context.Background(), "test-token")
+	if err == nil {
+		t.Fatal("expected error")
 	}
 
-	if len(got.Scopes) != 0 {
-		t.Fatalf("Scopes = %#v, want empty", got.Scopes)
-	}
-
-	if got.MappingChecksum != "sha256:test" {
-		t.Fatalf("MappingChecksum = %q, want sha256:test", got.MappingChecksum)
+	if !errors.Is(err, ErrPrincipalResolutionFailed) {
+		t.Fatalf("Authenticate() error = %v, want %v", err, ErrPrincipalResolutionFailed)
 	}
 }
 

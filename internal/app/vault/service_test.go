@@ -251,7 +251,7 @@ func TestServiceSearchNotesRequiresPrincipal(t *testing.T) {
 	}
 }
 
-func TestServiceSearchNotesWithNoPrincipalScopesReturnsEmptyAuditedPage(t *testing.T) {
+func TestServiceSearchNotesWithNoPrincipalScopesFailsClosed(t *testing.T) {
 	auditLog := &fakeAuditLogger{}
 	repository := &fakeRepository{
 		searchNotesFunc: func(context.Context, domain.SearchNotesQuery) (domain.SearchNotesPage, error) {
@@ -261,36 +261,32 @@ func TestServiceSearchNotesWithNoPrincipalScopesReturnsEmptyAuditedPage(t *testi
 	}
 	service := mustServiceWithAuditLog(t, repository, auditLog)
 	principal := auth.Principal{
-		Issuer:      "https://auth.example.test",
-		Subject:     "unknown_subject",
-		SubjectHash: "sha256:unknown",
+		Issuer:          "https://auth.example.test",
+		Subject:         "unknown_subject",
+		SubjectHash:     "sha256:unknown",
+		MappingChecksum: "sha256:test",
 	}
 
-	page, err := service.SearchNotes(testContextWithPrincipal(principal), domain.SearchNotesQuery{
+	_, err := service.SearchNotes(testContextWithPrincipal(principal), domain.SearchNotesQuery{
 		Text: domain.TextSearch{
 			Terms: []string{"canterbury"},
 		},
 		Limit: 10,
 	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if !errors.Is(err, domainauth.ErrPermissionDenied) {
+		t.Fatalf("got error %v, want %v", err, domainauth.ErrPermissionDenied)
 	}
 
-	if len(page.Results) != 0 {
-		t.Fatalf("got %d results, want none", len(page.Results))
-	}
-
-	if page.NextCursor != "" {
-		t.Fatalf("got next cursor %q, want empty", page.NextCursor)
-	}
-
-	assertRecordedEvent(t, auditLog, audit.EventTypeVaultSearchCompleted)
+	assertRecordedEvent(t, auditLog, audit.EventTypeVaultSearchFailed)
 	assertEventActor(t, auditLog.events[0], principal)
+	if auditLog.events[0].Outcome.Code != audit.OutcomeCodePermissionDenied {
+		t.Fatalf("got outcome code %q, want %q", auditLog.events[0].Outcome.Code, audit.OutcomeCodePermissionDenied)
+	}
 	if len(auditLog.events[0].Policy.MatchedScopes) != 0 {
 		t.Fatalf("got matched scopes %#v, want none", auditLog.events[0].Policy.MatchedScopes)
 	}
-	if auditLog.events[0].Policy.Decision != audit.PolicyDecisionAllow {
-		t.Fatalf("got policy decision %q, want %q", auditLog.events[0].Policy.Decision, audit.PolicyDecisionAllow)
+	if auditLog.events[0].Policy.Decision != audit.PolicyDecisionDeny {
+		t.Fatalf("got policy decision %q, want %q", auditLog.events[0].Policy.Decision, audit.PolicyDecisionDeny)
 	}
 }
 

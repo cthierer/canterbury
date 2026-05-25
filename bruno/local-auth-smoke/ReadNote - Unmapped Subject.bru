@@ -30,8 +30,8 @@ tests {
   const status = typeof res.getStatus === 'function' ? res.getStatus() : res.status;
   const body = typeof res.getBody === 'function' ? res.getBody() : res.body;
 
-  test('denies unmapped subject at vault policy', function () {
-    expect(status).to.equal(403);
-    expect(body.code).to.equal('permission_denied');
+  test('rejects unmapped subject during authentication', function () {
+    expect(status).to.equal(401);
+    expect(body.code).to.equal('unauthenticated');
   });
 }

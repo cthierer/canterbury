@@ -185,6 +185,13 @@ func TestAuthContextInterceptorMapsAuthenticateErrors(t *testing.T) {
 			wantReason: reasonPrincipalResolutionError,
 		},
 		{
+			name:       "principal resolution failure",
+			err:        auth.ErrPrincipalResolutionFailed,
+			want:       connect.CodeUnauthenticated,
+			wantAudit:  true,
+			wantReason: reasonPrincipalResolutionError,
+		},
+		{
 			name:       "expired token",
 			err:        auth.ErrExpiredToken,
 			want:       connect.CodeUnauthenticated,

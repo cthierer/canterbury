@@ -9,6 +9,7 @@ import (
 
 	"connectrpc.com/connect"
 	vaultv1 "github.com/cthierer/canterbury/gen/go/canterbury/vault/v1"
+	domainauth "github.com/cthierer/canterbury/internal/domain/auth"
 	domainvault "github.com/cthierer/canterbury/internal/domain/vault"
 )
 
@@ -47,6 +48,10 @@ func (h *VaultServiceHandler) SearchNotes(
 func classifySearchNotesError(_ *vaultv1.SearchNotesRequest, err error) error {
 	if errors.Is(err, domainvault.ErrInvalidSearch) {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("invalid search query"))
+	}
+
+	if errors.Is(err, domainauth.ErrPermissionDenied) {
+		return connect.NewError(connect.CodePermissionDenied, errors.New("permission denied; check your authorization scopes"))
 	}
 
 	return classifySystemError(err)

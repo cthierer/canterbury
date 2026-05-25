@@ -88,6 +88,14 @@ func TestNewScopeMapperRejectsInvalidSubjects(t *testing.T) {
 			},
 			want: "subject must not be blank",
 		},
+		{
+			name: "empty scopes",
+			subject: MappingSubject{
+				Issuer:  "https://auth.example.test",
+				Subject: "user_123",
+			},
+			want: `scope mapping for issuer "https://auth.example.test", subject "user_123" must include at least one scope`,
+		},
 	}
 
 	for _, test := range tests {

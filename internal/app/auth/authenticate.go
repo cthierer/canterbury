@@ -33,6 +33,9 @@ func (authenticator *Authenticator) Authenticate(ctx context.Context, token stri
 	if err != nil {
 		return Principal{}, fmt.Errorf("lookup scopes: %w", err)
 	}
+	if len(scopes.Scopes) == 0 {
+		return Principal{}, ErrPrincipalResolutionFailed
+	}
 
 	return Principal{
 		Issuer:          issuer,

@@ -216,6 +216,11 @@ func TestVaultServiceHandlerSearchNotes(t *testing.T) {
 			want:      connect.CodeUnavailable,
 		},
 		{
+			name:      "maps permission denied",
+			searchErr: fmt.Errorf("search repository: %w", domainauth.ErrPermissionDenied),
+			want:      connect.CodePermissionDenied,
+		},
+		{
 			name:      "maps missing principal",
 			searchErr: fmt.Errorf("extract principal: %w", domainauth.ErrMissingPrincipal),
 			want:      connect.CodeUnauthenticated,

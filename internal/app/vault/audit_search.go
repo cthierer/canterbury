@@ -11,6 +11,7 @@ import (
 
 	"github.com/cthierer/canterbury/internal/app/auth"
 	"github.com/cthierer/canterbury/internal/domain/audit"
+	authdomain "github.com/cthierer/canterbury/internal/domain/auth"
 	domain "github.com/cthierer/canterbury/internal/domain/vault"
 )
 
@@ -101,6 +102,10 @@ func (s *Service) recordSearchNotesError(
 
 	event.Outcome = s.outcome(startedAt, status, code)
 	event.Policy.MappingChecksum = principal.MappingChecksum
+	if errors.Is(err, authdomain.ErrPermissionDenied) {
+		event.Policy.Decision = audit.PolicyDecisionDeny
+		event.Policy.MatchedScopes = []domain.Scope{}
+	}
 
 	event.Details = &searchNotesEventFailedDetails{
 		Query:  searchQueryDetails(query),
@@ -120,6 +125,8 @@ func classifySearchNotesError(err error) (audit.OutcomeStatus, audit.OutcomeCode
 		return audit.OutcomeStatusFailed, audit.OutcomeCodeInvalidArgument, reasonInvalidSearchQuery
 	case errors.Is(err, domain.ErrVaultUnavailable):
 		return audit.OutcomeStatusError, audit.OutcomeCodeUnavailable, reasonVaultUnavailable
+	case errors.Is(err, authdomain.ErrPermissionDenied):
+		return audit.OutcomeStatusFailed, audit.OutcomeCodePermissionDenied, reasonNoMatchingScope
 	default:
 		return audit.OutcomeStatusError, audit.OutcomeCodeInternal, reasonRepositoryError
 	}

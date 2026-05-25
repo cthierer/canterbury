@@ -156,7 +156,7 @@ func handleAuthInterceptorError(err error) error {
 	}
 }
 
-func handleAuthAuditError(error) error {
+func handleAuthAuditError(_ error) error {
 	return connect.NewError(connect.CodeInternal, fmt.Errorf("authentication failed"))
 }
 
