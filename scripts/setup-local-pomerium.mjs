@@ -47,6 +47,7 @@ await renderTemplate(
 		__DEX_CLIENT_ID__: localEnv.DEX_CLIENT_ID,
 		__DEX_CLIENT_SECRET__: localEnv.DEX_CLIENT_SECRET,
 	},
+	0o644,
 )
 
 await renderTemplate(
@@ -58,6 +59,7 @@ await renderTemplate(
 		__POMERIUM_COOKIE_SECRET__: localEnv.POMERIUM_COOKIE_SECRET,
 		__POMERIUM_SHARED_SECRET__: localEnv.POMERIUM_SHARED_SECRET,
 	},
+	0o644,
 )
 
 const tlsKey = join(certDir, 'pomerium-local.key')
@@ -159,21 +161,25 @@ async function readEnvFile(path) {
 	return values
 }
 
-async function renderTemplate(source, destination, replacements) {
+async function renderTemplate(source, destination, replacements, mode) {
 	let content = await readFile(source, 'utf8')
 	for (const [placeholder, value] of Object.entries(replacements)) {
 		content = content.replaceAll(placeholder, value)
 	}
 
-	await writeSecretFile(destination, content)
+	await writeFileWithMode(destination, content, mode)
 }
 
 async function writeSecretFile(destination, content) {
+	await writeFileWithMode(destination, content, 0o600)
+}
+
+async function writeFileWithMode(destination, content, mode) {
 	const temporary = `${destination}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
 	try {
-		await writeFile(temporary, content, { mode: 0o600 })
+		await writeFile(temporary, content, { mode })
 		await rename(temporary, destination)
-		await chmod(destination, 0o600)
+		await chmod(destination, mode)
 	} catch (error) {
 		await unlink(temporary).catch(() => undefined)
 		throw error
