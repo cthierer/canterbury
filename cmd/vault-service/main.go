@@ -125,6 +125,14 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("initialize auth scope mapper: %w", err)
 	}
+	slog.InfoContext(
+		ctx,
+		"loaded auth scope mapping",
+		"subjects",
+		scopeMapper.SubjectCount(),
+		"checksum",
+		scopeMapper.MappingChecksum(),
+	)
 
 	tokenVerifier, err := authjwt.NewVerifier(ctx, authJWKSURL, []string{"EdDSA", "ES256"})
 	if err != nil {

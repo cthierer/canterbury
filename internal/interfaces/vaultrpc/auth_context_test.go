@@ -258,6 +258,42 @@ func TestAuthContextInterceptorReturnsInternalWhenAuthAuditFails(t *testing.T) {
 	}
 }
 
+func TestAuthContextInterceptorRecordsSafeFailureActor(t *testing.T) {
+	auditLog := &fakeAuditLogger{}
+	interceptor := mustAuthInterceptor(t, &fakeAuthenticator{
+		err: contextualAuthError{
+			cause: auth.ErrPrincipalResolutionFailed,
+			context: auth.FailureContext{
+				Issuer:      "https://auth.example.test",
+				SubjectHash: "sha256:subject",
+			},
+		},
+	}, auditLog)
+	req := connect.NewRequest(&vaultv1.ReadNoteRequest{})
+	req.Header().Set("Authorization", "Bearer test-token")
+
+	next := func(context.Context, connect.AnyRequest) (connect.AnyResponse, error) {
+		t.Fatal("next should not be called")
+		return nil, nil
+	}
+
+	_, err := interceptor.WrapUnary(next)(context.Background(), req)
+	assertConnectCode(t, err, connect.CodeUnauthenticated)
+	assertAuthFailedEvent(t, auditLog.events, reasonPrincipalResolutionError)
+
+	if auditLog.events[0].Actor.Issuer != "https://auth.example.test" {
+		t.Fatalf("actor issuer = %q, want auth issuer", auditLog.events[0].Actor.Issuer)
+	}
+
+	if auditLog.events[0].Actor.SubjectHash != "sha256:subject" {
+		t.Fatalf("actor subject hash = %q, want safe hash", auditLog.events[0].Actor.SubjectHash)
+	}
+
+	if len(auditLog.events[0].Actor.Scopes) != 0 {
+		t.Fatalf("actor scopes = %#v, want empty", auditLog.events[0].Actor.Scopes)
+	}
+}
+
 func TestAuthContextInterceptorUsesAuditMetadata(t *testing.T) {
 	auditLog := &fakeAuditLogger{}
 	interceptor := mustAuthInterceptor(t, &fakeAuthenticator{}, auditLog)
@@ -426,6 +462,23 @@ func (authenticator *fakeAuthenticator) Authenticate(ctx context.Context, token 
 
 func (authenticator *fakeAuthenticator) MappingChecksum() string {
 	return "sha256:mapping"
+}
+
+type contextualAuthError struct {
+	cause   error
+	context auth.FailureContext
+}
+
+func (err contextualAuthError) Error() string {
+	return err.cause.Error()
+}
+
+func (err contextualAuthError) Unwrap() error {
+	return err.cause
+}
+
+func (err contextualAuthError) FailureContext() auth.FailureContext {
+	return err.context
 }
 
 type fakeAuditLogger struct {

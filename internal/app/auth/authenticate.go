@@ -26,15 +26,23 @@ func (authenticator *Authenticator) Authenticate(ctx context.Context, token stri
 
 	subject := strings.TrimSpace(claims.Subject)
 	if subject == "" {
-		return Principal{}, ErrMissingSubject
+		return Principal{}, withFailureContext(ErrMissingSubject, FailureContext{
+			Issuer: issuer,
+		})
 	}
 
 	scopes, err := authenticator.scopeMapper.LookupScopes(ctx, issuer, subject)
 	if err != nil {
-		return Principal{}, fmt.Errorf("lookup scopes: %w", err)
+		return Principal{}, fmt.Errorf("lookup scopes: %w", withFailureContext(err, FailureContext{
+			Issuer:      issuer,
+			SubjectHash: hashSubject(issuer, subject),
+		}))
 	}
 	if len(scopes.Scopes) == 0 {
-		return Principal{}, ErrPrincipalResolutionFailed
+		return Principal{}, withFailureContext(ErrPrincipalResolutionFailed, FailureContext{
+			Issuer:      issuer,
+			SubjectHash: hashSubject(issuer, subject),
+		})
 	}
 
 	return Principal{

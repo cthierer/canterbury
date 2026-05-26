@@ -38,6 +38,10 @@ func TestNewScopeMapper(t *testing.T) {
 		t.Fatalf("MappingChecksum = %q, want sha256:test", got.MappingChecksum)
 	}
 
+	if mapper.SubjectCount() != 1 {
+		t.Fatalf("SubjectCount() = %d, want 1", mapper.SubjectCount())
+	}
+
 	wantScopes := []vault.Scope{"personal-agent"}
 	if !reflect.DeepEqual(got.Scopes, wantScopes) {
 		t.Fatalf("Scopes = %#v, want %#v", got.Scopes, wantScopes)

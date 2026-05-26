@@ -24,3 +24,46 @@ var (
 	// ErrPrincipalResolutionFailed indicates identity could not be resolved into a principal.
 	ErrPrincipalResolutionFailed = errors.New("principal resolution failed")
 )
+
+// FailureContext carries safe audit context for authentication failures.
+type FailureContext struct {
+	Issuer      string
+	SubjectHash string
+}
+
+type failureContextError struct {
+	cause   error
+	context FailureContext
+}
+
+func (err failureContextError) Error() string {
+	return err.cause.Error()
+}
+
+func (err failureContextError) Unwrap() error {
+	return err.cause
+}
+
+func (err failureContextError) FailureContext() FailureContext {
+	return err.context
+}
+
+func withFailureContext(cause error, context FailureContext) error {
+	return failureContextError{
+		cause:   cause,
+		context: context,
+	}
+}
+
+// FailureContextFromError returns safe audit context carried by an auth error.
+func FailureContextFromError(err error) (FailureContext, bool) {
+	var contextual interface {
+		FailureContext() FailureContext
+	}
+
+	if !errors.As(err, &contextual) {
+		return FailureContext{}, false
+	}
+
+	return contextual.FailureContext(), true
+}

@@ -59,6 +59,11 @@ func (mapper *ScopeMapper) MappingChecksum() string {
 	return mapper.sourceChecksum
 }
 
+// SubjectCount returns the number of loaded subject mappings.
+func (mapper *ScopeMapper) SubjectCount() int {
+	return len(mapper.lookup)
+}
+
 type subjectKey struct {
 	issuer  string
 	subject string

@@ -168,6 +168,19 @@ func TestAuthenticatorAuthenticateRejectsUnknownSubject(t *testing.T) {
 	if !errors.Is(err, ErrPrincipalResolutionFailed) {
 		t.Fatalf("Authenticate() error = %v, want %v", err, ErrPrincipalResolutionFailed)
 	}
+
+	failureContext, ok := FailureContextFromError(err)
+	if !ok {
+		t.Fatal("expected failure context")
+	}
+
+	if failureContext.Issuer != "https://auth.example.test" {
+		t.Fatalf("failure issuer = %q, want auth issuer", failureContext.Issuer)
+	}
+
+	if failureContext.SubjectHash != testSubjectHash("https://auth.example.test", "missing_user") {
+		t.Fatalf("failure subject hash = %q, want stable hash", failureContext.SubjectHash)
+	}
 }
 
 func TestAuthenticatorAuthenticateRejectsMissingSubject(t *testing.T) {
@@ -185,6 +198,19 @@ func TestAuthenticatorAuthenticateRejectsMissingSubject(t *testing.T) {
 
 	if !errors.Is(err, ErrMissingSubject) {
 		t.Fatalf("Authenticate() error = %v, want %v", err, ErrMissingSubject)
+	}
+
+	failureContext, ok := FailureContextFromError(err)
+	if !ok {
+		t.Fatal("expected failure context")
+	}
+
+	if failureContext.Issuer != "https://auth.example.test" {
+		t.Fatalf("failure issuer = %q, want auth issuer", failureContext.Issuer)
+	}
+
+	if failureContext.SubjectHash != "" {
+		t.Fatalf("failure subject hash = %q, want empty", failureContext.SubjectHash)
 	}
 }
 

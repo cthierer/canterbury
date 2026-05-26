@@ -191,6 +191,11 @@ func (interceptor *authContextInterceptor) recordAuthFailed(ctx context.Context,
 		},
 	}
 
+	if failureContext, ok := appauth.FailureContextFromError(err); ok {
+		event.Actor.Issuer = failureContext.Issuer
+		event.Actor.SubjectHash = failureContext.SubjectHash
+	}
+
 	if recordErr := interceptor.auditLog.RecordEvent(ctx, event); recordErr != nil {
 		return fmt.Errorf("record auth failed event: %w", recordErr)
 	}
