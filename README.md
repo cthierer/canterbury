@@ -24,7 +24,8 @@ Canterbury is in early development. The current implementation includes:
   mappings.
 - Scope-based authorization using note-declared access scopes and authenticated
   principals.
-- Date-rotated JSONL audit logging for vault read and search attempts.
+- Date-rotated JSONL audit logging for vault read/search attempts and
+  authentication failures.
 - Connect/gRPC health, reflection, `ReadNote`, and `SearchNotes` handlers.
 - A development auth CLI that starts a local Connect/gRPC service for minting
   local JWTs and serving its public verification key as JWKS.
@@ -34,8 +35,8 @@ Planned or incomplete components include:
 
 - MCP-compatible tools for AI agents.
 - Indexing and plugin-style vault operations.
-- Production identity-provider integration beyond the local Pomerium/Dex and
-  development auth helpers.
+- Production identity-provider runbooks and policy-management workflows beyond
+  the local Pomerium/Dex and development auth helpers.
 
 ## Project Description
 
@@ -79,13 +80,15 @@ The intended system has several components:
   events and content.
 
 The current repository implements the sync worker, the first vault service read
-and search paths, JWT-authenticated local access, a local Pomerium/Dex gateway
-stack, and filesystem JSONL audit logging for read, search, and authentication
-failure events. MCP tools, indexing, and write workflows are not implemented
-yet.
+and search paths, JWT-authenticated vault RPCs, a local Pomerium/Dex gateway
+stack, a development JWT issuer, and filesystem JSONL audit logging for read,
+search, and authentication failure events. MCP tools, indexing, and write
+workflows are not implemented yet.
 
 See [Canterbury Architecture](docs/architecture.md) for the planned Go package
-structure and dependency boundaries.
+structure and dependency boundaries. See [Auth V1 Design](docs/auth-v1-design.md)
+and [Audit System Design](docs/audit-v1-design.md) for the implemented
+authentication and audit boundaries.
 
 ## Access Model
 
@@ -103,6 +106,11 @@ Missing `access.scopes` means the note is not available through controlled
 service interfaces. The current vault service validates signed bearer JWTs,
 maps each token issuer and subject to Canterbury scopes from a TOML file outside
 the vault, and authorizes note access from those mapped scopes.
+
+Valid JWTs whose `(issuer, subject)` pair is not present in the mapping file are
+rejected as unauthenticated because Canterbury cannot resolve them to a local
+principal. Mapped principals whose scopes do not match a note's declared access
+scopes are authenticated but denied by vault policy.
 
 ## Project Dependencies
 
@@ -367,8 +375,9 @@ In another shell, start the local vault service:
 go run ./cmd/vault-service
 ```
 
-The service exposes Connect/gRPC on the configured address. The current
-implemented vault RPCs are:
+The service exposes Connect/gRPC on the configured address. Vault RPCs require
+an `Authorization: Bearer <jwt>` header. The currently implemented vault RPCs
+are:
 
 ```text
 /canterbury.vault.v1.VaultService/ReadNote
@@ -477,10 +486,10 @@ Omit `options.ttlSeconds` or set it to `0` to use the service default. The
 application rejects missing subjects, missing audiences, negative TTLs, and TTLs
 above the current local development maximum. The service exposes its public
 verification key as JWKS at `http://127.0.0.1:50052/.well-known/jwks.json` so
-local verifier work can use the same JWKS shape planned for deployed auth. The
-key is generated in memory when the service starts, so tokens minted before a
-restart do not verify against the new endpoint response. The Bruno collection in
-`bruno/devauth` points at the dev-auth default address.
+local verifier work uses the same JWKS shape as deployed-style gateway auth.
+The key is generated in memory when the service starts, so tokens minted before
+a restart do not verify against the new endpoint response. The Bruno collection
+in `bruno/devauth` points at the dev-auth default address.
 
 ## Develop Canterbury
 
@@ -563,34 +572,35 @@ npm --prefix sync run check
 
 ## Troubleshoot
 
-| Problem                                                              | Cause                                                                           | Solution                                                                                                              |
-| -------------------------------------------------------------------- | ------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------- |
-| `SYNC_VAULT_NAME is required`                                        | `sync/.env` is missing the vault name or ID.                                    | Set `SYNC_VAULT_NAME`.                                                                                                |
-| `SYNC_VAULT_PASSWORD is required`                                    | `sync/.env` is missing the vault encryption password.                           | Set `SYNC_VAULT_PASSWORD`.                                                                                            |
-| `SYNC_OBSIDIAN_AUTH_TOKEN is required`                               | `sync/.env` is missing the Obsidian auth token.                                 | Set `SYNC_OBSIDIAN_AUTH_TOKEN`.                                                                                       |
-| `environment variable "VAULT_SERVICE_ROOT" is required`              | `.env` or the shell environment is missing the vault service root path.         | Set `VAULT_SERVICE_ROOT` to `./sample-vault` for the demo or to your mirrored vault path.                             |
-| `environment variable "VAULT_SERVICE_AUTH_ISSUER" is required`       | `.env` or the shell environment is missing the expected JWT issuer.             | Set `VAULT_SERVICE_AUTH_ISSUER` to the issuer used by your auth provider or local dev-auth service.                   |
-| `environment variable "VAULT_SERVICE_AUTH_AUDIENCE" is required`     | `.env` or the shell environment is missing the expected JWT audience.           | Set `VAULT_SERVICE_AUTH_AUDIENCE`, and mint/request tokens with the same audience.                                    |
-| `environment variable "VAULT_SERVICE_AUTH_JWKS_URL" is required`     | `.env` or the shell environment is missing the JWKS URL.                        | Set `VAULT_SERVICE_AUTH_JWKS_URL`, such as `http://127.0.0.1:50052/.well-known/jwks.json` for local development.      |
-| `environment variable "VAULT_SERVICE_AUTH_MAPPING_FILE" is required` | `.env` or the shell environment is missing the scope mapping path.              | Set `VAULT_SERVICE_AUTH_MAPPING_FILE` to a TOML mapping file such as `./sample-auth/scopes.toml`.                     |
-| `environment variable "VAULT_SERVICE_AUDIT_ROOT" is required`        | `.env` or the shell environment is missing the audit log directory.             | Set `VAULT_SERVICE_AUDIT_ROOT` to an explicit directory outside the vault, such as `./audit`.                         |
-| `environment variable "VAULT_SERVICE_AUDIT_HMAC_KEY" is required`    | `.env` or the shell environment is missing the audit HMAC key.                  | Generate a literal key with `openssl rand -base64 32` and set `VAULT_SERVICE_AUDIT_HMAC_KEY`.                         |
-| `parse audit hmac key`                                               | `VAULT_SERVICE_AUDIT_HMAC_KEY` is not base64 or decodes to fewer than 32 bytes. | Replace it with a literal key generated by `openssl rand -base64 32`.                                                 |
-| `permission denied; check your authorization scopes`                 | The note does not declare a scope mapped to the authenticated subject.          | Add a matching `access.scopes` value to the note or update the auth mapping file for local development.               |
-| `invalid search query`                                               | A search request contains an unsupported sort or invalid page token.            | Use `SEARCH_SORT_PATH_ASC` or `SEARCH_SORT_MODIFIED_DESC`, and only reuse `nextPageToken` values returned by search.  |
-| `Another sync instance is already running for this vault.`           | Another sync process owns the vault lock, or the vault path is not writable.    | Stop other sync clients for the same vault and confirm the container can write to `/vault`.                           |
-| The container exits after a sync failure.                            | Compose is configured with `restart: 'no'`.                                     | Inspect the logs with `docker compose logs obsidian-sync`, fix the configuration, then run `docker compose up` again. |
-| Files are hard to inspect on the host.                               | The default Docker volume stores the vault outside the repository.              | Use Docker volume tooling to inspect it, or deliberately configure a bind mount for local development.                |
+| Problem                                                              | Cause                                                                                                      | Solution                                                                                                                                              |
+| -------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SYNC_VAULT_NAME is required`                                        | `sync/.env` is missing the vault name or ID.                                                               | Set `SYNC_VAULT_NAME`.                                                                                                                                |
+| `SYNC_VAULT_PASSWORD is required`                                    | `sync/.env` is missing the vault encryption password.                                                      | Set `SYNC_VAULT_PASSWORD`.                                                                                                                            |
+| `SYNC_OBSIDIAN_AUTH_TOKEN is required`                               | `sync/.env` is missing the Obsidian auth token.                                                            | Set `SYNC_OBSIDIAN_AUTH_TOKEN`.                                                                                                                       |
+| `environment variable "VAULT_SERVICE_ROOT" is required`              | `.env` or the shell environment is missing the vault service root path.                                    | Set `VAULT_SERVICE_ROOT` to `./sample-vault` for the demo or to your mirrored vault path.                                                             |
+| `environment variable "VAULT_SERVICE_AUTH_ISSUER" is required`       | `.env` or the shell environment is missing the expected JWT issuer.                                        | Set `VAULT_SERVICE_AUTH_ISSUER` to the issuer used by your auth provider or local dev-auth service.                                                   |
+| `environment variable "VAULT_SERVICE_AUTH_AUDIENCE" is required`     | `.env` or the shell environment is missing the expected JWT audience.                                      | Set `VAULT_SERVICE_AUTH_AUDIENCE`, and mint/request tokens with the same audience.                                                                    |
+| `environment variable "VAULT_SERVICE_AUTH_JWKS_URL" is required`     | `.env` or the shell environment is missing the JWKS URL.                                                   | Set `VAULT_SERVICE_AUTH_JWKS_URL`, such as `http://127.0.0.1:50052/.well-known/jwks.json` for local development.                                      |
+| `environment variable "VAULT_SERVICE_AUTH_MAPPING_FILE" is required` | `.env` or the shell environment is missing the scope mapping path.                                         | Set `VAULT_SERVICE_AUTH_MAPPING_FILE` to a TOML mapping file such as `./sample-auth/scopes.toml`.                                                     |
+| `environment variable "VAULT_SERVICE_AUDIT_ROOT" is required`        | `.env` or the shell environment is missing the audit log directory.                                        | Set `VAULT_SERVICE_AUDIT_ROOT` to an explicit directory outside the vault, such as `./audit`.                                                         |
+| `environment variable "VAULT_SERVICE_AUDIT_HMAC_KEY" is required`    | `.env` or the shell environment is missing the audit HMAC key.                                             | Generate a literal key with `openssl rand -base64 32` and set `VAULT_SERVICE_AUDIT_HMAC_KEY`.                                                         |
+| `parse audit hmac key`                                               | `VAULT_SERVICE_AUDIT_HMAC_KEY` is not base64 or decodes to fewer than 32 bytes.                            | Replace it with a literal key generated by `openssl rand -base64 32`.                                                                                 |
+| `unauthenticated` from a vault RPC                                   | The request is missing a bearer token, the token is invalid, or the verified issuer/subject is not mapped. | Mint/request a fresh token with the configured issuer and audience, then add a matching `(issuer, subject)` entry to the auth mapping file if needed. |
+| `permission denied; check your authorization scopes`                 | The caller is authenticated, but the note does not declare a scope mapped to that subject.                 | Add a matching `access.scopes` value to the note or update the auth mapping file for local development.                                               |
+| `invalid search query`                                               | A search request contains an unsupported sort or invalid page token.                                       | Use `SEARCH_SORT_PATH_ASC` or `SEARCH_SORT_MODIFIED_DESC`, and only reuse `nextPageToken` values returned by search.                                  |
+| `Another sync instance is already running for this vault.`           | Another sync process owns the vault lock, or the vault path is not writable.                               | Stop other sync clients for the same vault and confirm the container can write to `/vault`.                                                           |
+| The container exits after a sync failure.                            | Compose is configured with `restart: 'no'`.                                                                | Inspect the logs with `docker compose logs obsidian-sync`, fix the configuration, then run `docker compose up` again.                                 |
+| Files are hard to inspect on the host.                               | The default Docker volume stores the vault outside the repository.                                         | Use Docker volume tooling to inspect it, or deliberately configure a bind mount for local development.                                                |
 
 ## Roadmap
 
 The planned MVP includes:
 
 - Read-only vault access through MCP-compatible tools.
-- Scope-based frontmatter access control.
-- Production-ready authentication integrations and more robust principal-to-scope policy management.
+- Production identity-provider deployment guidance and more robust
+  principal-to-scope policy management.
 - Hardening and operationalizing vault sync through Obsidian Headless.
-- Audit logging outside the vault.
+- Write-operation audit gating before any write paths are added.
 - Basic indexing with SQLite.
 
 Initial non-goals include:
@@ -617,6 +627,9 @@ storage, and treat host bind mounts as local development overrides.
 - [`obsidian-headless`](https://www.npmjs.com/package/obsidian-headless)
 - [Obsidian Sync](https://obsidian.md/sync)
 - [Docker Compose](https://docs.docker.com/compose/)
+- [Canterbury Architecture](docs/architecture.md)
+- [Auth V1 Design](docs/auth-v1-design.md)
+- [Audit System Design](docs/audit-v1-design.md)
 - [Local Pomerium Stack](docs/local-pomerium.md)
 - [The Good Docs Project README template guide](https://www.thegooddocsproject.dev/template/readme)
 
