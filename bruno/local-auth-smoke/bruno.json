@@ -1,0 +1,6 @@
+{
+	"version": "1",
+	"name": "local-auth-smoke",
+	"type": "collection",
+	"ignore": ["node_modules", ".git"]
+}

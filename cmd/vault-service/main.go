@@ -22,12 +22,13 @@ import (
 
 	"github.com/cthierer/canterbury/gen/go/canterbury/vault/v1/vaultv1connect"
 	"github.com/cthierer/canterbury/internal/adapters/auditfs"
+	"github.com/cthierer/canterbury/internal/adapters/authfs"
+	"github.com/cthierer/canterbury/internal/adapters/authjwt"
 	"github.com/cthierer/canterbury/internal/adapters/vaultfs"
 	"github.com/cthierer/canterbury/internal/app/auditlog"
-	"github.com/cthierer/canterbury/internal/app/auth"
+	appauth "github.com/cthierer/canterbury/internal/app/auth"
 	vaultapp "github.com/cthierer/canterbury/internal/app/vault"
-	vaultdomain "github.com/cthierer/canterbury/internal/domain/vault"
-	vaultconnect "github.com/cthierer/canterbury/internal/interfaces/connectrpc"
+	vaultconnect "github.com/cthierer/canterbury/internal/interfaces/vaultrpc"
 	"github.com/joho/godotenv"
 )
 
@@ -37,7 +38,10 @@ const (
 	readHeaderTimeout        = 5 * time.Second
 	vaultServiceAddressEnv   = "VAULT_SERVICE_ADDR"
 	vaultServiceRoot         = "VAULT_SERVICE_ROOT"
-	vaultServiceScopes       = "VAULT_SERVICE_AUTH_SCOPES"
+	vaultServiceAuthIssuer   = "VAULT_SERVICE_AUTH_ISSUER"
+	vaultServiceAuthAudience = "VAULT_SERVICE_AUTH_AUDIENCE"
+	vaultServiceAuthJWKSURL  = "VAULT_SERVICE_AUTH_JWKS_URL"
+	vaultServiceAuthMapping  = "VAULT_SERVICE_AUTH_MAPPING_FILE"
 	vaultServiceAuditRoot    = "VAULT_SERVICE_AUDIT_ROOT"
 	vaultServiceAuditHMACKey = "VAULT_SERVICE_AUDIT_HMAC_KEY"
 	vaultServiceWriterID     = "VAULT_SERVICE_AUDIT_WRITER_ID"
@@ -45,7 +49,7 @@ const (
 
 func main() {
 	if err := run(); err != nil {
-		slog.Error("vault service stopped", "error", err)
+		slog.ErrorContext(context.Background(), "vault service stopped", "err", err)
 		os.Exit(1)
 	}
 }
@@ -64,16 +68,6 @@ func run() error {
 	vaultRoot, err := requiredConfigValue(vaultServiceRoot)
 	if err != nil {
 		return fmt.Errorf("read vault configuration: %w", err)
-	}
-
-	authScopesStr, err := requiredConfigValue(vaultServiceScopes)
-	if err != nil {
-		return fmt.Errorf("read auth configuration: %w", err)
-	}
-
-	authScopes, err := toScopes(authScopesStr)
-	if err != nil {
-		return fmt.Errorf("parse auth scopes: %w", err)
 	}
 
 	vaultRepository, err := vaultfs.NewRepository(vaultRoot)
@@ -102,7 +96,60 @@ func run() error {
 		return fmt.Errorf("initialize audit log: %w", err)
 	}
 
-	vaultApplication, err := vaultapp.NewService(vaultRepository, auth.Principal{Scopes: authScopes}, auditLog)
+	authIssuer, err := requiredConfigValue(vaultServiceAuthIssuer)
+	if err != nil {
+		return fmt.Errorf("read auth issuer configuration: %w", err)
+	}
+
+	authAudience, err := requiredConfigValue(vaultServiceAuthAudience)
+	if err != nil {
+		return fmt.Errorf("read auth audience configuration: %w", err)
+	}
+
+	authJWKSURL, err := requiredConfigValue(vaultServiceAuthJWKSURL)
+	if err != nil {
+		return fmt.Errorf("read auth JWKS configuration: %w", err)
+	}
+
+	authMappingFile, err := requiredConfigValue(vaultServiceAuthMapping)
+	if err != nil {
+		return fmt.Errorf("read auth mapping configuration: %w", err)
+	}
+
+	authMappingLoader, err := authfs.NewLoader(authMappingFile)
+	if err != nil {
+		return fmt.Errorf("initialize auth mapping loader: %w", err)
+	}
+
+	scopeMapper, err := appauth.NewScopeMapper(ctx, authMappingLoader)
+	if err != nil {
+		return fmt.Errorf("initialize auth scope mapper: %w", err)
+	}
+	slog.InfoContext(
+		ctx,
+		"loaded auth scope mapping",
+		"subjects",
+		scopeMapper.SubjectCount(),
+		"checksum",
+		scopeMapper.MappingChecksum(),
+	)
+
+	tokenVerifier, err := authjwt.NewVerifier(ctx, authJWKSURL, []string{"EdDSA", "ES256"})
+	if err != nil {
+		return fmt.Errorf("initialize auth JWT verifier: %w", err)
+	}
+
+	authenticator, err := appauth.NewAuthenticator(authIssuer, authAudience, scopeMapper, tokenVerifier)
+	if err != nil {
+		return fmt.Errorf("initialize auth application service: %w", err)
+	}
+
+	authInterceptor, err := vaultconnect.NewAuthContextInterceptor(authenticator, auditLog)
+	if err != nil {
+		return fmt.Errorf("initialize auth context interceptor: %w", err)
+	}
+
+	vaultApplication, err := vaultapp.NewService(vaultRepository, auditLog)
 	if err != nil {
 		return fmt.Errorf("initialize vault application service: %w", err)
 	}
@@ -127,7 +174,10 @@ func run() error {
 		return fmt.Errorf("initialize audit context interceptor: %w", err)
 	}
 
-	vaultPath, vaultHandler := vaultv1connect.NewVaultServiceHandler(vaultService, connect.WithInterceptors(auditInterceptor))
+	vaultPath, vaultHandler := vaultv1connect.NewVaultServiceHandler(
+		vaultService,
+		connect.WithInterceptors(auditInterceptor, authInterceptor),
+	)
 	mux.Handle(vaultPath, vaultHandler)
 
 	checker := grpchealth.NewStaticChecker(vaultv1connect.VaultServiceName)
@@ -148,7 +198,7 @@ func run() error {
 
 	errs := make(chan error, 1)
 	go func() {
-		slog.Info("starting vault service", "address", address)
+		slog.InfoContext(ctx, "starting vault service", "address", address)
 		errs <- server.ListenAndServe()
 	}()
 
@@ -195,31 +245,6 @@ func requiredConfigValue(name string) (string, error) {
 	}
 
 	return value, nil
-}
-
-func toScopes(scopesStr string) ([]vaultdomain.Scope, error) {
-	scopes := strings.Split(scopesStr, ",")
-	parsed := make([]vaultdomain.Scope, 0, len(scopes))
-
-	for _, scope := range scopes {
-		trimmed := strings.TrimSpace(scope)
-		if trimmed == "" {
-			continue
-		}
-
-		parsedScope, err := vaultdomain.NewScope(trimmed)
-		if err != nil {
-			return nil, fmt.Errorf("parse scope %q: %w", scope, err)
-		}
-
-		parsed = append(parsed, parsedScope)
-	}
-
-	if len(parsed) < 1 {
-		return nil, errors.New("must have at least 1 scope")
-	}
-
-	return parsed, nil
 }
 
 func parseHMACKey(value string) ([]byte, error) {

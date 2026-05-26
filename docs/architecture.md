@@ -56,8 +56,6 @@ internal/
       audit.go
       audit_read.go
       audit_search.go
-      errors.go
-      note.go
 
   adapters/
     auditfs/
@@ -81,17 +79,22 @@ internal/
       errors.go
 
   interfaces/
-    connectrpc/
+    vaultrpc/
       vault_service.go
       read_note.go
       search_notes.go
       audit_context.go
+      auth_context.go
       correlation.go
       error.go
       log.go
       proto_note.go
       proto_search.go
       proto_struct.go
+
+    devrpc/
+      auth_service.go
+      mint_token.go
 
     mcp/
       tools.go
@@ -126,10 +129,11 @@ cmd        -> app + adapters + interfaces
   `app/idgen`.
 - `adapters` implements ports using external systems such as the vault
   filesystem mirror or an audit store. Currently includes `adapters/vaultfs`
-  and `adapters/auditfs`.
+  and `adapters/auditfs`, plus auth and development-auth adapters.
 - `interfaces` adapts external protocols such as Connect/gRPC, MCP, or REST to
-  application use cases. Currently includes `interfaces/connectrpc`; dedicated
-  MCP and REST interfaces remain planned.
+  application use cases. Currently includes `interfaces/vaultrpc`,
+  `interfaces/devrpc`, and `interfaces/keyshttp`; dedicated MCP and REST
+  interfaces remain planned.
 - `cmd` wires concrete implementations together for an executable.
 
 Domain packages must not import application, adapter, or interface
@@ -191,16 +195,19 @@ Supporting packages in `internal/app/`:
   recording.
 - `auditlog` implements audit event recording through the `domain/audit`
   recorder port.
-- `auth` defines the principal model used for authorization.
+- `auth` defines the principal model, scope mapper, and token verification port
+  used for authentication and authorization.
+- `authctx` carries authenticated principals through request context.
 - `clock` provides a `Clock` abstraction and a system-time implementation used
   for audit timestamps.
+- `devauth` implements local development token minting.
 - `idgen` provides unique ID generation (ULID) used for audit event IDs.
 
 `internal/adapters/auditfs` holds the filesystem append-only audit log
 implementation. Future write operations must not commit successfully without an
 independent audit record.
 
-`internal/interfaces/connectrpc` is the current external interface. Future
+`internal/interfaces/vaultrpc` is the current vault RPC interface. Future
 `internal/interfaces/mcp` and future `internal/interfaces/rest` should expose
 protocol adapters only. They should translate requests into application use
 cases rather than reading vault files directly.

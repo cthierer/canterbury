@@ -14,9 +14,9 @@ Audit records live outside the vault. Vault content and AI agents that access th
 vault through Canterbury should not be able to rewrite or erase the history of
 access decisions.
 
-The current implementation covers the local vault service read and search paths.
-Authentication-aware audit events are reserved for Auth V1 and are tracked in
-`docs/auth-v1-plan.md`.
+The current implementation covers the local vault service read and search paths
+and authentication failure events. Authentication design details live in
+`docs/auth-v1-design.md`.
 
 ## Implemented Scope
 
@@ -29,10 +29,11 @@ The current audit system records:
 - Completed searches.
 - Search failures, such as invalid queries, unavailable vaults, and unexpected
   repository errors.
+- Authentication failures.
 
 The current audit system does not yet provide:
 
-- Request authentication events.
+- Authentication success events.
 - A query API for audit records.
 - Write-operation audit gating.
 - Tamper-proof storage, signing, hash chaining, compression, or retention
@@ -50,7 +51,7 @@ interface layers:
   `AuditLogger` interface.
 - `internal/adapters/auditfs` persists audit events as JSON Lines files on the
   local filesystem.
-- `internal/interfaces/connectrpc` attaches request-scoped audit metadata, such
+- `internal/interfaces/vaultrpc` attaches request-scoped audit metadata, such
   as request IDs, trace IDs, user agents, and hashed remote addresses.
 - `cmd/vault-service` wires the configured filesystem recorder into the vault
   service runtime.
@@ -170,15 +171,16 @@ Field guidance:
 - `request_id`: generated once per inbound request, or accepted from
   `X-Request-ID` when valid.
 - `trace_id`: W3C `traceparent` trace ID when supplied.
-- `actor.issuer`: identity issuer. The current local service uses `self`.
-- `actor.subject_hash`: hashed stable subject once Auth V1 is implemented.
-- `actor.scopes`: Canterbury scopes granted to the actor once Auth V1 is
-  implemented.
+- `actor.issuer`: identity issuer for the authenticated principal when known.
+- `actor.subject_hash`: hashed stable subject for the authenticated principal
+  when known.
+- `actor.scopes`: Canterbury scopes granted to the authenticated principal.
 - `client.interface`: interface that received the request, such as
   `connectrpc` or `service`.
 - `client.user_agent`: caller user agent when available.
 - `client.remote_addr_hash`: keyed hash of the remote address when available.
-- `policy.mapping_checksum`: auth mapping checksum once Auth V1 is implemented.
+- `policy.mapping_checksum`: checksum of the auth mapping file used to resolve
+  the principal.
 - `policy.matched_scopes`: note scopes that matched the caller principal.
 - `policy.decision`: `allow` or `deny`.
 - `outcome.status`: `success`, `failed`, or `error`.
@@ -187,9 +189,10 @@ Field guidance:
 - `outcome.duration_ns`: operation duration as nanoseconds.
 - `details`: event-specific payload.
 
-Until Auth V1 lands, Connect requests attach placeholder actor metadata with
-`issuer: "self"`. The fixed local principal is still used for policy decisions,
-but request-specific actor subject and mapped scopes are not available yet.
+Auth failure events omit actor fields when the service cannot safely extract a
+verified issuer or subject. When a signed token verifies but principal
+resolution fails, the event may include the issuer and a subject hash while
+still omitting raw subject values and bearer token data.
 
 ## Request Metadata
 
@@ -354,7 +357,7 @@ audit record has already been durably recorded outside the vault.
 
 ## Reserved Future Events
 
-Authentication events are part of Auth V1:
+Authentication event names are reserved by Auth V1:
 
 - `auth.failed`
 - `auth.succeeded`

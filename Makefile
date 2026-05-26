@@ -21,6 +21,8 @@ help:
 	@printf '%s\n' '  make format          Format repository files'
 	@printf '%s\n' '  make test            Run Go tests'
 	@printf '%s\n' '  make lint            Run Go linting'
+	@printf '%s\n' '  make smoke-auth      Run local auth smoke tests'
+	@printf '%s\n' '  make smoke-pomerium  Run local Pomerium stack smoke tests'
 	@printf '%s\n' '  make proto-generate  Regenerate protobuf outputs'
 
 .PHONY: setup
@@ -40,14 +42,15 @@ deps-go:
 
 .PHONY: tools
 tools: tools-go
+	@printf '%s\n' 'Project tools are installed.'
 
 .PHONY: tools-go
-tools-go: $(CACHE_DIR)/tools/golangci-lint-$(GOLANGCI_LINT_VERSION)
-
-$(CACHE_DIR)/tools/golangci-lint-$(GOLANGCI_LINT_VERSION):
-	mkdir -p $(BIN_DIR) $(CACHE_DIR)/tools
-	GOBIN=$(BIN_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
-	touch $@
+tools-go:
+	@mkdir -p $(BIN_DIR) $(CACHE_DIR)/tools
+	@if ! $(BIN_DIR)/golangci-lint version 2>/dev/null | grep -q '$(GOLANGCI_LINT_VERSION:v%=%)'; then \
+		printf '%s\n' 'Installing golangci-lint $(GOLANGCI_LINT_VERSION)...'; \
+		GOBIN=$(BIN_DIR) go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION); \
+	fi
 
 .PHONY: check
 check: tools-go
@@ -64,6 +67,14 @@ test:
 .PHONY: lint
 lint: tools-go
 	GOCACHE=$(GOCACHE) GOMODCACHE=$(GOMODCACHE) GOLANGCI_LINT_CACHE=$(GOLANGCI_LINT_CACHE) npm run lint:go
+
+.PHONY: smoke-auth
+smoke-auth:
+	npm run smoke:auth
+
+.PHONY: smoke-pomerium
+smoke-pomerium:
+	npm run smoke:pomerium
 
 .PHONY: proto-generate
 proto-generate:

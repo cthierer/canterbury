@@ -4,11 +4,8 @@ import (
 	"encoding/base64"
 	"os"
 	"path/filepath"
-	"reflect"
 	"strings"
 	"testing"
-
-	vaultdomain "github.com/cthierer/canterbury/internal/domain/vault"
 )
 
 func TestConfigValue(t *testing.T) {
@@ -92,31 +89,6 @@ func TestLoadLocalEnv(t *testing.T) {
 
 		if got := os.Getenv("CANTERBURY_DOTENV_ONLY"); got != "loaded" {
 			t.Fatalf("got %q, want loaded", got)
-		}
-	})
-}
-
-func TestToScopes(t *testing.T) {
-	t.Run("parses comma-separated scopes", func(t *testing.T) {
-		got, err := toScopes(" personal-agent,public-site, ")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		want := []vaultdomain.Scope{"personal-agent", "public-site"}
-		if !reflect.DeepEqual(got, want) {
-			t.Fatalf("got %#v, want %#v", got, want)
-		}
-	})
-
-	t.Run("rejects empty scopes", func(t *testing.T) {
-		_, err := toScopes(" , ")
-		if err == nil {
-			t.Fatal("expected error")
-		}
-
-		if !strings.Contains(err.Error(), "must have at least 1 scope") {
-			t.Fatalf("got error %q, want empty scopes message", err)
 		}
 	})
 }

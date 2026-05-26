@@ -1,0 +1,14 @@
+[[subjects]]
+issuer = "devauth.canterbury.local"
+subject = "user_123"
+scopes = ["personal-agent"]
+
+[[subjects]]
+issuer = "vault.localhost.pomerium.io"
+subject = "Cgh1c2VyXzEyMxIFbG9jYWw"
+scopes = ["personal-agent"]
+
+[[subjects]]
+issuer = "vault.localhost.pomerium.io"
+subject = "Cg1wdWJsaWNfcmVhZGVyEgVsb2NhbA"
+scopes = ["public-site"]

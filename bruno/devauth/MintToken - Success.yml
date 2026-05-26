@@ -1,0 +1,19 @@
+info:
+  name: MintToken - Success
+  type: grpc
+  seq: 1
+
+grpc:
+  url: '{{BaseURI}}'
+  method: /canterbury.dev.v1.DevAuthService/MintToken
+  methodType: unary
+  protoFilePath: ../../api/canterbury/dev/v1/auth.proto
+  message: |-
+    {
+      "claims": {
+        "subject": "user_123",
+        "audiences": ["canterbury.vault.local"]
+      },
+      "options": {}
+    }
+  auth: inherit
