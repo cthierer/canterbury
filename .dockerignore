@@ -1,7 +1,13 @@
+.cache/
 .codex
-.env
-.git
+.git/
 .gitignore
-vault/
+.vscode/
+audit/
+node_modules/
 sync/.env
 sync/node_modules/
+vault/
+.env
+deploy/local-pomerium/.generated/
+deploy/local-pomerium/local.env
