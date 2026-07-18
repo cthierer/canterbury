@@ -18,7 +18,12 @@
 	},
 	"devDependencies": {
 		"@bufbuild/buf": "^1.68.4",
-		"@usebruno/cli": "^3.4.0",
+		"@usebruno/cli": "^3.5.2",
 		"prettier": "^3.6.2"
+	},
+	"allowScripts": {
+		"@bufbuild/buf@1.68.4": true,
+		"protobufjs@8.4.2": true,
+		"protobufjs@7.6.1": true
 	}
 }
