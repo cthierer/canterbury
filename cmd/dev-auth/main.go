@@ -23,15 +23,12 @@ import (
 	"github.com/cthierer/canterbury/internal/interfaces/devrpc"
 	"github.com/cthierer/canterbury/internal/interfaces/keyshttp"
 	"github.com/joho/godotenv"
+	"github.com/kelseyhightower/envconfig"
 	"golang.org/x/net/http2"
 	"golang.org/x/net/http2/h2c"
 )
 
 const (
-	defaultAddress      = "127.0.0.1:50052"
-	defaultIssuer       = "devauth.canterbury.local"
-	devAuthAddressEnv   = "DEV_AUTH_ADDR"
-	devAuthIssuerEnv    = "DEV_AUTH_ISSUER"
 	readHeaderTimeout   = 5 * time.Second
 	shutdownGracePeriod = 10 * time.Second
 )
@@ -112,19 +109,19 @@ func parseCommand(args []string) (command, error) {
 }
 
 type serveConfig struct {
-	Address string
-	Issuer  string
+	Addr   string `default:"127.0.0.1:50052"`
+	Issuer string `default:"devauth.canterbury.local"`
 }
 
 func loadServeConfig(args []string, output io.Writer) (serveConfig, error) {
-	cfg := serveConfig{
-		Address: configValue(devAuthAddressEnv, defaultAddress),
-		Issuer:  configValue(devAuthIssuerEnv, defaultIssuer),
+	var cfg serveConfig
+	if err := envconfig.Process("dev_auth", &cfg); err != nil {
+		return serveConfig{}, err
 	}
 
 	flags := flag.NewFlagSet("dev-auth serve", flag.ContinueOnError)
 	flags.SetOutput(output)
-	flags.StringVar(&cfg.Address, "addr", cfg.Address, "HTTP listen address")
+	flags.StringVar(&cfg.Addr, "addr", cfg.Addr, "HTTP listen address")
 	flags.StringVar(&cfg.Issuer, "issuer", cfg.Issuer, "issuer claim for minted JWTs")
 	flags.Usage = func() {
 		writeServeUsage(output, flags)
@@ -138,7 +135,7 @@ func loadServeConfig(args []string, output io.Writer) (serveConfig, error) {
 		return serveConfig{}, fmt.Errorf("unexpected serve argument %q", flags.Arg(0))
 	}
 
-	if strings.TrimSpace(cfg.Address) == "" {
+	if strings.TrimSpace(cfg.Addr) == "" {
 		return serveConfig{}, fmt.Errorf("address must not be empty")
 	}
 
@@ -186,7 +183,7 @@ func serve(cfg serveConfig) error {
 	mux.Handle(reflectV1AlphaPath, reflectV1AlphaHandler)
 
 	server := &http.Server{
-		Addr:              cfg.Address,
+		Addr:              cfg.Addr,
 		Handler:           h2c.NewHandler(mux, &http2.Server{}),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
@@ -214,15 +211,6 @@ func serve(cfg serveConfig) error {
 
 		return err
 	}
-}
-
-func configValue(name string, fallback string) string {
-	value := os.Getenv(name)
-	if value == "" {
-		return fallback
-	}
-
-	return value
 }
 
 func loadLocalEnv() error {

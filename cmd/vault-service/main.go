@@ -30,21 +30,30 @@ import (
 	vaultapp "github.com/cthierer/canterbury/internal/app/vault"
 	vaultconnect "github.com/cthierer/canterbury/internal/interfaces/vaultrpc"
 	"github.com/joho/godotenv"
+	"github.com/kelseyhightower/envconfig"
 )
 
+type config struct {
+	Addr  string `default:"127.0.0.1:50051"`
+	Root  string `required:"true"`
+	Audit struct {
+		Root     string  `required:"true"`
+		HMACKey  HMACKey `required:"true" split_words:"true"`
+		WriterID string  `split_words:"true"`
+	}
+	Auth struct {
+		Issuer   string `required:"true"`
+		Audience string `required:"true"`
+		JWKS     struct {
+			URL string `required:"true"`
+		}
+		MappingFile string `required:"true" split_words:"true"`
+	}
+}
+
 const (
-	defaultAddress           = "127.0.0.1:50051"
-	shutdownGracePeriod      = 10 * time.Second
-	readHeaderTimeout        = 5 * time.Second
-	vaultServiceAddressEnv   = "VAULT_SERVICE_ADDR"
-	vaultServiceRoot         = "VAULT_SERVICE_ROOT"
-	vaultServiceAuthIssuer   = "VAULT_SERVICE_AUTH_ISSUER"
-	vaultServiceAuthAudience = "VAULT_SERVICE_AUTH_AUDIENCE"
-	vaultServiceAuthJWKSURL  = "VAULT_SERVICE_AUTH_JWKS_URL"
-	vaultServiceAuthMapping  = "VAULT_SERVICE_AUTH_MAPPING_FILE"
-	vaultServiceAuditRoot    = "VAULT_SERVICE_AUDIT_ROOT"
-	vaultServiceAuditHMACKey = "VAULT_SERVICE_AUDIT_HMAC_KEY"
-	vaultServiceWriterID     = "VAULT_SERVICE_AUDIT_WRITER_ID"
+	shutdownGracePeriod = 10 * time.Second
+	readHeaderTimeout   = 5 * time.Second
 )
 
 func main() {
@@ -62,31 +71,25 @@ func run() error {
 		return err
 	}
 
-	mux := http.NewServeMux()
-	address := configValue(vaultServiceAddressEnv, defaultAddress)
-
-	vaultRoot, err := requiredConfigValue(vaultServiceRoot)
-	if err != nil {
-		return fmt.Errorf("read vault configuration: %w", err)
+	var config config
+	if err := envconfig.Process("vault_service", &config); err != nil {
+		return err
 	}
 
-	vaultRepository, err := vaultfs.NewRepository(vaultRoot)
+	mux := http.NewServeMux()
+
+	vaultRepository, err := vaultfs.NewRepository(config.Root)
 	if err != nil {
 		return fmt.Errorf("initialize vault repository: %w", err)
 	}
 
-	auditRoot, err := requiredConfigValue(vaultServiceAuditRoot)
-	if err != nil {
-		return fmt.Errorf("read audit configuration: %w", err)
-	}
-
 	auditOptions := []auditfs.RecorderOption{}
-	auditWriterID := configValue(vaultServiceWriterID, "")
+	auditWriterID := config.Audit.WriterID
 	if auditWriterID != "" {
 		auditOptions = append(auditOptions, auditfs.WithWriterID(auditWriterID))
 	}
 
-	auditRecorder, err := auditfs.NewRecorder(auditRoot, auditOptions...)
+	auditRecorder, err := auditfs.NewRecorder(config.Audit.Root, auditOptions...)
 	if err != nil {
 		return fmt.Errorf("initialize audit recorder: %w", err)
 	}
@@ -96,27 +99,7 @@ func run() error {
 		return fmt.Errorf("initialize audit log: %w", err)
 	}
 
-	authIssuer, err := requiredConfigValue(vaultServiceAuthIssuer)
-	if err != nil {
-		return fmt.Errorf("read auth issuer configuration: %w", err)
-	}
-
-	authAudience, err := requiredConfigValue(vaultServiceAuthAudience)
-	if err != nil {
-		return fmt.Errorf("read auth audience configuration: %w", err)
-	}
-
-	authJWKSURL, err := requiredConfigValue(vaultServiceAuthJWKSURL)
-	if err != nil {
-		return fmt.Errorf("read auth JWKS configuration: %w", err)
-	}
-
-	authMappingFile, err := requiredConfigValue(vaultServiceAuthMapping)
-	if err != nil {
-		return fmt.Errorf("read auth mapping configuration: %w", err)
-	}
-
-	authMappingLoader, err := authfs.NewLoader(authMappingFile)
+	authMappingLoader, err := authfs.NewLoader(config.Auth.MappingFile)
 	if err != nil {
 		return fmt.Errorf("initialize auth mapping loader: %w", err)
 	}
@@ -134,12 +117,12 @@ func run() error {
 		scopeMapper.MappingChecksum(),
 	)
 
-	tokenVerifier, err := authjwt.NewVerifier(ctx, authJWKSURL, []string{"EdDSA", "ES256"})
+	tokenVerifier, err := authjwt.NewVerifier(ctx, config.Auth.JWKS.URL, []string{"EdDSA", "ES256"})
 	if err != nil {
 		return fmt.Errorf("initialize auth JWT verifier: %w", err)
 	}
 
-	authenticator, err := appauth.NewAuthenticator(authIssuer, authAudience, scopeMapper, tokenVerifier)
+	authenticator, err := appauth.NewAuthenticator(config.Auth.Issuer, config.Auth.Audience, scopeMapper, tokenVerifier)
 	if err != nil {
 		return fmt.Errorf("initialize auth application service: %w", err)
 	}
@@ -159,17 +142,7 @@ func run() error {
 		return fmt.Errorf("initialize vault connect service: %w", err)
 	}
 
-	auditHMACKeyBase64, err := requiredConfigValue(vaultServiceAuditHMACKey)
-	if err != nil {
-		return fmt.Errorf("read audit hmac configuration: %w", err)
-	}
-
-	auditHMACKey, err := parseHMACKey(auditHMACKeyBase64)
-	if err != nil {
-		return fmt.Errorf("parse audit hmac key: %w", err)
-	}
-
-	auditInterceptor, err := vaultconnect.NewAuditContextInterceptor(auditHMACKey)
+	auditInterceptor, err := vaultconnect.NewAuditContextInterceptor(config.Audit.HMACKey)
 	if err != nil {
 		return fmt.Errorf("initialize audit context interceptor: %w", err)
 	}
@@ -191,14 +164,14 @@ func run() error {
 	mux.Handle(reflectV1AlphaPath, reflectV1AlphaHandler)
 
 	server := &http.Server{
-		Addr:              address,
+		Addr:              config.Addr,
 		Handler:           h2c.NewHandler(mux, &http2.Server{}),
 		ReadHeaderTimeout: readHeaderTimeout,
 	}
 
 	errs := make(chan error, 1)
 	go func() {
-		slog.InfoContext(ctx, "starting vault service", "address", address)
+		slog.InfoContext(ctx, "starting vault service", "address", config.Addr)
 		errs <- server.ListenAndServe()
 	}()
 
@@ -221,15 +194,6 @@ func run() error {
 	}
 }
 
-func configValue(name string, fallback string) string {
-	value := os.Getenv(name)
-	if value == "" {
-		return fallback
-	}
-
-	return value
-}
-
 func loadLocalEnv() error {
 	if err := godotenv.Load(".env"); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("load dotenv configuration: %w", err)
@@ -238,29 +202,23 @@ func loadLocalEnv() error {
 	return nil
 }
 
-func requiredConfigValue(name string) (string, error) {
-	value := configValue(name, "")
-	if value == "" {
-		return "", fmt.Errorf("environment variable %q is required", name)
-	}
+type HMACKey []byte
 
-	return value, nil
-}
-
-func parseHMACKey(value string) ([]byte, error) {
+func (hmacKey *HMACKey) Decode(value string) error {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return nil, fmt.Errorf("HMAC key is required")
+		return fmt.Errorf("HMAC key is required")
 	}
 
-	key, err := base64.StdEncoding.DecodeString(value)
+	decoded, err := base64.StdEncoding.DecodeString(value)
 	if err != nil {
-		return nil, fmt.Errorf("HMAC key must be base64 encoded: %w", err)
+		return fmt.Errorf("HMAC key must be base64 encoded: %w", err)
 	}
 
-	if len(key) < 32 {
-		return nil, fmt.Errorf("HMAC key must decode to at least 32 bytes")
+	if len(decoded) < 32 {
+		return fmt.Errorf("HMAC key must decode to at least 32 bytes")
 	}
 
-	return key, nil
+	*hmacKey = decoded
+	return nil
 }

@@ -51,34 +51,34 @@ func TestParseCommand(t *testing.T) {
 }
 
 func TestLoadServeConfigUsesDevelopmentDefaults(t *testing.T) {
-	unsetEnv(t, devAuthAddressEnv)
-	unsetEnv(t, devAuthIssuerEnv)
+	unsetEnv(t, "DEV_AUTH_ADDR")
+	unsetEnv(t, "DEV_AUTH_ISSUER")
 
 	got, err := loadServeConfig(nil, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("loadServeConfig() error = %v", err)
 	}
 
-	if got.Address != defaultAddress {
-		t.Fatalf("address = %q, want %q", got.Address, defaultAddress)
+	if got.Addr != "127.0.0.1:50052" {
+		t.Fatalf("addr = %q, want default address", got.Addr)
 	}
 
-	if got.Issuer != defaultIssuer {
-		t.Fatalf("issuer = %q, want %q", got.Issuer, defaultIssuer)
+	if got.Issuer != "devauth.canterbury.local" {
+		t.Fatalf("issuer = %q, want default issuer", got.Issuer)
 	}
 }
 
 func TestLoadServeConfigUsesEnvironmentDefaults(t *testing.T) {
-	t.Setenv(devAuthAddressEnv, "127.0.0.1:60052")
-	t.Setenv(devAuthIssuerEnv, "https://dev-auth.example.test")
+	t.Setenv("DEV_AUTH_ADDR", "127.0.0.1:60052")
+	t.Setenv("DEV_AUTH_ISSUER", "https://dev-auth.example.test")
 
 	got, err := loadServeConfig(nil, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("loadServeConfig() error = %v", err)
 	}
 
-	if got.Address != "127.0.0.1:60052" {
-		t.Fatalf("address = %q, want environment address", got.Address)
+	if got.Addr != "127.0.0.1:60052" {
+		t.Fatalf("addr = %q, want environment address", got.Addr)
 	}
 	if got.Issuer != "https://dev-auth.example.test" {
 		t.Fatalf("issuer = %q, want environment issuer", got.Issuer)
@@ -86,8 +86,8 @@ func TestLoadServeConfigUsesEnvironmentDefaults(t *testing.T) {
 }
 
 func TestLoadServeConfigFlagsOverrideEnvironment(t *testing.T) {
-	t.Setenv(devAuthAddressEnv, "127.0.0.1:60052")
-	t.Setenv(devAuthIssuerEnv, "https://environment.example.test")
+	t.Setenv("DEV_AUTH_ADDR", "127.0.0.1:60052")
+	t.Setenv("DEV_AUTH_ISSUER", "https://environment.example.test")
 
 	got, err := loadServeConfig([]string{
 		"--addr", "127.0.0.1:70052",
@@ -97,8 +97,8 @@ func TestLoadServeConfigFlagsOverrideEnvironment(t *testing.T) {
 		t.Fatalf("loadServeConfig() error = %v", err)
 	}
 
-	if got.Address != "127.0.0.1:70052" {
-		t.Fatalf("address = %q, want flag address", got.Address)
+	if got.Addr != "127.0.0.1:70052" {
+		t.Fatalf("addr = %q, want flag address", got.Addr)
 	}
 	if got.Issuer != "https://flag.example.test" {
 		t.Fatalf("issuer = %q, want flag issuer", got.Issuer)
@@ -172,26 +172,6 @@ func TestServeRejectsInvalidIssuerBeforeListening(t *testing.T) {
 	if !errors.Is(err, devauthjwt.ErrInvalidIssuer) {
 		t.Fatalf("serve() error = %v, want %v", err, devauthjwt.ErrInvalidIssuer)
 	}
-}
-
-func TestConfigValue(t *testing.T) {
-	t.Run("returns environment value", func(t *testing.T) {
-		t.Setenv("DEV_AUTH_TEST_VALUE", "configured")
-
-		got := configValue("DEV_AUTH_TEST_VALUE", "fallback")
-		if got != "configured" {
-			t.Fatalf("configValue() = %q, want configured", got)
-		}
-	})
-
-	t.Run("returns fallback when unset", func(t *testing.T) {
-		unsetEnv(t, "DEV_AUTH_TEST_UNSET")
-
-		got := configValue("DEV_AUTH_TEST_UNSET", "fallback")
-		if got != "fallback" {
-			t.Fatalf("configValue() = %q, want fallback", got)
-		}
-	})
 }
 
 func TestLoadLocalEnv(t *testing.T) {

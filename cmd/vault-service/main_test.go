@@ -6,55 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/kelseyhightower/envconfig"
 )
-
-func TestConfigValue(t *testing.T) {
-	t.Run("returns environment value", func(t *testing.T) {
-		t.Setenv("CANTERBURY_TEST_VALUE", "configured")
-
-		got := configValue("CANTERBURY_TEST_VALUE", "fallback")
-		if got != "configured" {
-			t.Fatalf("got %q, want configured", got)
-		}
-	})
-
-	t.Run("returns fallback when unset", func(t *testing.T) {
-		unsetEnv(t, "CANTERBURY_TEST_UNSET")
-
-		got := configValue("CANTERBURY_TEST_UNSET", "fallback")
-		if got != "fallback" {
-			t.Fatalf("got %q, want fallback", got)
-		}
-	})
-}
-
-func TestRequiredConfigValue(t *testing.T) {
-	t.Run("returns configured value", func(t *testing.T) {
-		t.Setenv("CANTERBURY_TEST_REQUIRED", "configured")
-
-		got, err := requiredConfigValue("CANTERBURY_TEST_REQUIRED")
-		if err != nil {
-			t.Fatalf("unexpected error: %v", err)
-		}
-
-		if got != "configured" {
-			t.Fatalf("got %q, want configured", got)
-		}
-	})
-
-	t.Run("rejects missing value", func(t *testing.T) {
-		unsetEnv(t, "CANTERBURY_TEST_REQUIRED_MISSING")
-
-		_, err := requiredConfigValue("CANTERBURY_TEST_REQUIRED_MISSING")
-		if err == nil {
-			t.Fatal("expected error")
-		}
-
-		if !strings.Contains(err.Error(), `environment variable "CANTERBURY_TEST_REQUIRED_MISSING" is required`) {
-			t.Fatalf("got error %q, want required variable message", err)
-		}
-	})
-}
 
 func TestLoadLocalEnv(t *testing.T) {
 	t.Run("ignores missing dotenv file", func(t *testing.T) {
@@ -93,11 +47,67 @@ func TestLoadLocalEnv(t *testing.T) {
 	})
 }
 
-func TestParseHMACKey(t *testing.T) {
+func TestConfigLoadsDocumentedEnvironment(t *testing.T) {
+	validKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
+
+	t.Setenv("VAULT_SERVICE_ROOT", "./sample-vault")
+	t.Setenv("VAULT_SERVICE_AUTH_ISSUER", "devauth.canterbury.local")
+	t.Setenv("VAULT_SERVICE_AUTH_AUDIENCE", "canterbury.vault.local")
+	t.Setenv("VAULT_SERVICE_AUTH_JWKS_URL", "http://127.0.0.1:50052/.well-known/jwks.json")
+	t.Setenv("VAULT_SERVICE_AUTH_MAPPING_FILE", "./sample-auth/scopes.toml")
+	t.Setenv("VAULT_SERVICE_AUDIT_ROOT", "./audit")
+	t.Setenv("VAULT_SERVICE_AUDIT_HMAC_KEY", validKey)
+	t.Setenv("VAULT_SERVICE_AUDIT_WRITER_ID", "test-writer")
+	unsetEnv(t, "VAULT_SERVICE_ADDR")
+
+	var got config
+	if err := envconfig.Process("vault_service", &got); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if got.Addr != "127.0.0.1:50051" {
+		t.Fatalf("got address %q, want default address", got.Addr)
+	}
+
+	if got.Root != "./sample-vault" {
+		t.Fatalf("got root %q, want ./sample-vault", got.Root)
+	}
+
+	if got.Auth.Issuer != "devauth.canterbury.local" {
+		t.Fatalf("got auth issuer %q, want devauth.canterbury.local", got.Auth.Issuer)
+	}
+
+	if got.Auth.Audience != "canterbury.vault.local" {
+		t.Fatalf("got auth audience %q, want canterbury.vault.local", got.Auth.Audience)
+	}
+
+	if got.Auth.JWKS.URL != "http://127.0.0.1:50052/.well-known/jwks.json" {
+		t.Fatalf("got auth JWKS URL %q, want configured URL", got.Auth.JWKS.URL)
+	}
+
+	if got.Auth.MappingFile != "./sample-auth/scopes.toml" {
+		t.Fatalf("got auth mapping file %q, want ./sample-auth/scopes.toml", got.Auth.MappingFile)
+	}
+
+	if got.Audit.Root != "./audit" {
+		t.Fatalf("got audit root %q, want ./audit", got.Audit.Root)
+	}
+
+	if len(got.Audit.HMACKey) != 32 {
+		t.Fatalf("got audit HMAC key length %d, want 32", len(got.Audit.HMACKey))
+	}
+
+	if got.Audit.WriterID != "test-writer" {
+		t.Fatalf("got audit writer ID %q, want test-writer", got.Audit.WriterID)
+	}
+}
+
+func TestHMACKeyDecode(t *testing.T) {
 	validKey := base64.StdEncoding.EncodeToString([]byte("0123456789abcdef0123456789abcdef"))
 
 	t.Run("decodes base64 key", func(t *testing.T) {
-		got, err := parseHMACKey(" " + validKey + " ")
+		var got HMACKey
+		err := got.Decode(" " + validKey + " ")
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -108,7 +118,8 @@ func TestParseHMACKey(t *testing.T) {
 	})
 
 	t.Run("rejects empty key", func(t *testing.T) {
-		_, err := parseHMACKey(" ")
+		var got HMACKey
+		err := got.Decode(" ")
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -119,7 +130,8 @@ func TestParseHMACKey(t *testing.T) {
 	})
 
 	t.Run("rejects non-base64 key", func(t *testing.T) {
-		_, err := parseHMACKey("$(openssl rand -base64 32)")
+		var got HMACKey
+		err := got.Decode("$(openssl rand -base64 32)")
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -130,7 +142,8 @@ func TestParseHMACKey(t *testing.T) {
 	})
 
 	t.Run("rejects short key", func(t *testing.T) {
-		_, err := parseHMACKey(base64.StdEncoding.EncodeToString([]byte("short")))
+		var got HMACKey
+		err := got.Decode(base64.StdEncoding.EncodeToString([]byte("short")))
 		if err == nil {
 			t.Fatal("expected error")
 		}
@@ -149,7 +162,7 @@ func TestEnvExampleHMACKey(t *testing.T) {
 
 	for _, line := range strings.Split(string(content), "\n") {
 		key, value, ok := strings.Cut(line, "=")
-		if !ok || key != vaultServiceAuditHMACKey {
+		if !ok || key != "VAULT_SERVICE_AUDIT_HMAC_KEY" {
 			continue
 		}
 
@@ -157,14 +170,15 @@ func TestEnvExampleHMACKey(t *testing.T) {
 			t.Fatalf("example HMAC key must be a literal value, got %q", value)
 		}
 
-		if _, err := parseHMACKey(value); err != nil {
+		var hmacKey HMACKey
+		if err := hmacKey.Decode(value); err != nil {
 			t.Fatalf("example HMAC key is not valid: %v", err)
 		}
 
 		return
 	}
 
-	t.Fatalf(".env.example missing %s", vaultServiceAuditHMACKey)
+	t.Fatal(".env.example missing VAULT_SERVICE_AUDIT_HMAC_KEY")
 }
 
 func inTempDir(t *testing.T) string {
