@@ -101,6 +101,8 @@ async function mintIDToken(username) {
 	const body = new URLSearchParams({
 		grant_type: 'password',
 		scope: 'openid profile email',
+		client_id: dexClientID,
+		client_secret: dexClientSecret,
 		username,
 		password: testPassword,
 	})
@@ -108,7 +110,6 @@ async function mintIDToken(username) {
 	const response = await fetch(`${dexBaseURL}/token`, {
 		method: 'POST',
 		headers: {
-			authorization: `Basic ${Buffer.from(`${dexClientID}:${dexClientSecret}`).toString('base64')}`,
 			'content-type': 'application/x-www-form-urlencoded',
 		},
 		body,
