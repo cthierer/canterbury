@@ -6,6 +6,9 @@ import { execFileSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+/** Environment-file values parsed from KEY=value lines. */
+type EnvValues = Record<string, string>
+
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const rootDir = dirname(scriptDir)
 const localDir = join(rootDir, 'deploy', 'local-pomerium')
@@ -16,6 +19,111 @@ const certDir = join(generatedDir, 'certs')
 const keyDir = join(generatedDir, 'keys')
 
 process.umask(0o077)
+
+/** Exits early with a clear message when the local OpenSSL CLI is unavailable. */
+const ensureOpenSSL = () => {
+	try {
+		execFileSync('openssl', ['version'], { stdio: 'ignore' })
+	} catch {
+		console.error('Missing required command: openssl. Install OpenSSL and retry.')
+		process.exit(1)
+	}
+}
+
+/** Generates a base64-encoded 256-bit secret for local-only credentials. */
+const randomBase64 = () => {
+	return randomBytes(32).toString('base64')
+}
+
+/** Builds the UID/GID environment prefix used by the local Docker Compose stack. */
+const composeUserEnv = () => {
+	if (typeof process.getuid === 'function' && typeof process.getgid === 'function') {
+		return `CANTERBURY_UID=${process.getuid()} CANTERBURY_GID=${process.getgid()}`
+	}
+
+	return 'CANTERBURY_UID=$(id -u) CANTERBURY_GID=$(id -g)'
+}
+
+/** Checks Node-style thrown values for a specific filesystem or process error code. */
+const hasErrorCode = (error: unknown, code: string) => {
+	return (
+		typeof error === 'object' &&
+		error !== null &&
+		'code' in error &&
+		(error as { code?: unknown }).code === code
+	)
+}
+
+/** Returns a useful message for unknown caught values. */
+const getErrorMessage = (error: unknown) => {
+	return error instanceof Error ? error.message : String(error)
+}
+
+/** Reads an optional local.env file without overwriting missing files as errors. */
+const readEnvFile = async (path: string): Promise<EnvValues> => {
+	let data
+	try {
+		data = await readFile(path, 'utf8')
+	} catch (error) {
+		if (hasErrorCode(error, 'ENOENT')) {
+			return {}
+		}
+
+		throw new Error(`Failed to read local environment file at ${path}: ${getErrorMessage(error)}`, {
+			cause: error,
+		})
+	}
+
+	const values: EnvValues = {}
+	for (const line of data.split('\n')) {
+		const trimmed = line.trim()
+		if (trimmed === '' || trimmed.startsWith('#')) {
+			continue
+		}
+
+		const separator = trimmed.indexOf('=')
+		if (separator === -1) {
+			continue
+		}
+
+		values[trimmed.slice(0, separator)] = trimmed.slice(separator + 1)
+	}
+
+	return values
+}
+
+/** Renders a generated config file by replacing explicit template placeholders. */
+const renderTemplate = async (
+	source: string,
+	destination: string,
+	replacements: EnvValues,
+	mode: number,
+) => {
+	let content = await readFile(source, 'utf8')
+	for (const [placeholder, value] of Object.entries(replacements)) {
+		content = content.replaceAll(placeholder, value)
+	}
+
+	await writeFileWithMode(destination, content, mode)
+}
+
+/** Writes sensitive local configuration with owner-only file permissions. */
+const writeSecretFile = async (destination: string, content: string) => {
+	await writeFileWithMode(destination, content, 0o600)
+}
+
+/** Atomically writes a file and applies the requested POSIX mode after rename. */
+const writeFileWithMode = async (destination: string, content: string, mode: number) => {
+	const temporary = `${destination}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
+	try {
+		await writeFile(temporary, content, { mode })
+		await rename(temporary, destination)
+		await chmod(destination, mode)
+	} catch (error) {
+		await unlink(temporary).catch(() => undefined)
+		throw error
+	}
+}
 
 ensureOpenSSL()
 
@@ -109,79 +217,3 @@ console.log(`Local Pomerium files generated in ${generatedDir}`)
 console.log(`Local environment written to ${envFile}`)
 console.log(`Start the stack with: ${composeUserEnv()} docker compose up --build`)
 console.log('Run the smoke test with: make smoke-pomerium')
-
-function ensureOpenSSL() {
-	try {
-		execFileSync('openssl', ['version'], { stdio: 'ignore' })
-	} catch {
-		console.error('Missing required command: openssl. Install OpenSSL and retry.')
-		process.exit(1)
-	}
-}
-
-function randomBase64() {
-	return randomBytes(32).toString('base64')
-}
-
-function composeUserEnv() {
-	if (typeof process.getuid === 'function' && typeof process.getgid === 'function') {
-		return `CANTERBURY_UID=${process.getuid()} CANTERBURY_GID=${process.getgid()}`
-	}
-
-	return 'CANTERBURY_UID=$(id -u) CANTERBURY_GID=$(id -g)'
-}
-
-async function readEnvFile(path) {
-	let data
-	try {
-		data = await readFile(path, 'utf8')
-	} catch (error) {
-		if (error.code === 'ENOENT') {
-			return {}
-		}
-
-		throw new Error(`Failed to read local environment file at ${path}: ${error.message}`)
-	}
-
-	const values = {}
-	for (const line of data.split('\n')) {
-		const trimmed = line.trim()
-		if (trimmed === '' || trimmed.startsWith('#')) {
-			continue
-		}
-
-		const separator = trimmed.indexOf('=')
-		if (separator === -1) {
-			continue
-		}
-
-		values[trimmed.slice(0, separator)] = trimmed.slice(separator + 1)
-	}
-
-	return values
-}
-
-async function renderTemplate(source, destination, replacements, mode) {
-	let content = await readFile(source, 'utf8')
-	for (const [placeholder, value] of Object.entries(replacements)) {
-		content = content.replaceAll(placeholder, value)
-	}
-
-	await writeFileWithMode(destination, content, mode)
-}
-
-async function writeSecretFile(destination, content) {
-	await writeFileWithMode(destination, content, 0o600)
-}
-
-async function writeFileWithMode(destination, content, mode) {
-	const temporary = `${destination}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
-	try {
-		await writeFile(temporary, content, { mode })
-		await rename(temporary, destination)
-		await chmod(destination, mode)
-	} catch (error) {
-		await unlink(temporary).catch(() => undefined)
-		throw error
-	}
-}

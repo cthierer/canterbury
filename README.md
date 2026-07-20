@@ -151,7 +151,7 @@ make check
 2. Generate local Pomerium config, certificates, and secrets:
 
 ```bash
-scripts/setup-local-pomerium.mjs
+scripts/setup-local-pomerium.mts
 ```
 
 3. Build the default local stack:

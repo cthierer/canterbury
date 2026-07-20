@@ -17,7 +17,7 @@ Generate the local-only Pomerium config, certificates, keys, and shared secrets
 first:
 
 ```bash
-scripts/setup-local-pomerium.mjs
+scripts/setup-local-pomerium.mts
 ```
 
 The setup script writes generated files under
@@ -99,7 +99,7 @@ scopes = ["personal-agent"]
 
 To add a local account, add a `staticPasswords` entry in
 `deploy/local-pomerium/dex-config.template.yaml`, re-run
-`scripts/setup-local-pomerium.mjs`, choose a stable `userID`, sign in through
+`scripts/setup-local-pomerium.mts`, choose a stable `userID`, sign in through
 Pomerium once, then read Pomerium's `user` value from the authorize log and add
 a matching `(issuer, subject)` entry to `sample-auth/scopes.toml`.
 
