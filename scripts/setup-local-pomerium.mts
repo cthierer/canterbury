@@ -6,6 +6,8 @@ import { execFileSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+type EnvValues = Record<string, string>
+
 const scriptDir = dirname(fileURLToPath(import.meta.url))
 const rootDir = dirname(scriptDir)
 const localDir = join(rootDir, 'deploy', 'local-pomerium')
@@ -38,21 +40,34 @@ const composeUserEnv = () => {
 	return 'CANTERBURY_UID=$(id -u) CANTERBURY_GID=$(id -g)'
 }
 
-const readEnvFile = async path => {
+const hasErrorCode = (error: unknown, code: string) => {
+	return (
+		typeof error === 'object' &&
+		error !== null &&
+		'code' in error &&
+		(error as { code?: unknown }).code === code
+	)
+}
+
+const getErrorMessage = (error: unknown) => {
+	return error instanceof Error ? error.message : String(error)
+}
+
+const readEnvFile = async (path: string): Promise<EnvValues> => {
 	let data
 	try {
 		data = await readFile(path, 'utf8')
 	} catch (error) {
-		if (error.code === 'ENOENT') {
+		if (hasErrorCode(error, 'ENOENT')) {
 			return {}
 		}
 
-		throw new Error(`Failed to read local environment file at ${path}: ${error.message}`, {
+		throw new Error(`Failed to read local environment file at ${path}: ${getErrorMessage(error)}`, {
 			cause: error,
 		})
 	}
 
-	const values = {}
+	const values: EnvValues = {}
 	for (const line of data.split('\n')) {
 		const trimmed = line.trim()
 		if (trimmed === '' || trimmed.startsWith('#')) {
@@ -70,7 +85,12 @@ const readEnvFile = async path => {
 	return values
 }
 
-const renderTemplate = async (source, destination, replacements, mode) => {
+const renderTemplate = async (
+	source: string,
+	destination: string,
+	replacements: EnvValues,
+	mode: number,
+) => {
 	let content = await readFile(source, 'utf8')
 	for (const [placeholder, value] of Object.entries(replacements)) {
 		content = content.replaceAll(placeholder, value)
@@ -79,11 +99,11 @@ const renderTemplate = async (source, destination, replacements, mode) => {
 	await writeFileWithMode(destination, content, mode)
 }
 
-const writeSecretFile = async (destination, content) => {
+const writeSecretFile = async (destination: string, content: string) => {
 	await writeFileWithMode(destination, content, 0o600)
 }
 
-const writeFileWithMode = async (destination, content, mode) => {
+const writeFileWithMode = async (destination: string, content: string, mode: number) => {
 	const temporary = `${destination}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
 	try {
 		await writeFile(temporary, content, { mode })

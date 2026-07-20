@@ -1,14 +1,16 @@
-const js = require('./sync/node_modules/@eslint/js')
-const prettier = require('./sync/node_modules/eslint-config-prettier')
-const globals = require('./sync/node_modules/globals')
+const js = require('@eslint/js')
+const prettier = require('eslint-config-prettier')
+const globals = require('globals')
+const tseslint = require('typescript-eslint')
 
-module.exports = [
+module.exports = tseslint.config(
 	{
 		ignores: ['**/node_modules/**'],
 	},
 	js.configs.recommended,
+	...tseslint.configs.recommended,
 	{
-		files: ['sync/**/*.js', 'scripts/**/*.mjs'],
+		files: ['**/*.js', '**/*.mts'],
 		languageOptions: {
 			ecmaVersion: 'latest',
 			globals: {
@@ -28,4 +30,4 @@ module.exports = [
 		},
 	},
 	prettier,
-]
+)

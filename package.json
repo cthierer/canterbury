@@ -3,24 +3,32 @@
 	"version": "1.0.0",
 	"private": true,
 	"scripts": {
-		"format": "prettier --write .golangci.yml .prettierrc package.json package-lock.json docker-compose.yml README.md AGENTS.md CONTRIBUTING.md docs/architecture.md docs/audit-v1-design.md docs/auth-v1-design.md docs/local-pomerium.md deploy/local-pomerium/README.md deploy/local-pomerium/*.yaml buf.yaml buf.gen.yaml eslint.config.js sync/sync.js sync/package.json sync/package-lock.json sync/eslint.config.js scripts/local-auth-smoke.mjs scripts/local-pomerium-smoke.mjs scripts/setup-local-pomerium.mjs bruno/local-auth-smoke/bruno.json \"bruno/**/*.yml\" .github/workflows/ci.yml .github/copilot-instructions.md && npm run proto:format && npm run format:go",
-		"format:check": "prettier --check .golangci.yml .prettierrc package.json package-lock.json docker-compose.yml README.md AGENTS.md CONTRIBUTING.md docs/architecture.md docs/audit-v1-design.md docs/auth-v1-design.md docs/local-pomerium.md deploy/local-pomerium/README.md deploy/local-pomerium/*.yaml buf.yaml buf.gen.yaml eslint.config.js sync/sync.js sync/package.json sync/package-lock.json sync/eslint.config.js scripts/local-auth-smoke.mjs scripts/local-pomerium-smoke.mjs scripts/setup-local-pomerium.mjs bruno/local-auth-smoke/bruno.json \"bruno/**/*.yml\" .github/workflows/ci.yml .github/copilot-instructions.md",
+		"format": "prettier --write .golangci.yml .prettierrc package.json package-lock.json docker-compose.yml README.md AGENTS.md CONTRIBUTING.md docs/architecture.md docs/audit-v1-design.md docs/auth-v1-design.md docs/local-pomerium.md deploy/local-pomerium/README.md deploy/local-pomerium/*.yaml buf.yaml buf.gen.yaml tsconfig.json eslint.config.js sync/sync.js sync/package.json sync/package-lock.json sync/eslint.config.js scripts/local-auth-smoke.mts scripts/local-pomerium-smoke.mts scripts/setup-local-pomerium.mts bruno/local-auth-smoke/bruno.json \"bruno/**/*.yml\" .github/workflows/ci.yml .github/copilot-instructions.md && npm run proto:format && npm run format:go",
+		"format:check": "prettier --check .golangci.yml .prettierrc package.json package-lock.json docker-compose.yml README.md AGENTS.md CONTRIBUTING.md docs/architecture.md docs/audit-v1-design.md docs/auth-v1-design.md docs/local-pomerium.md deploy/local-pomerium/README.md deploy/local-pomerium/*.yaml buf.yaml buf.gen.yaml tsconfig.json eslint.config.js sync/sync.js sync/package.json sync/package-lock.json sync/eslint.config.js scripts/local-auth-smoke.mts scripts/local-pomerium-smoke.mts scripts/setup-local-pomerium.mts bruno/local-auth-smoke/bruno.json \"bruno/**/*.yml\" .github/workflows/ci.yml .github/copilot-instructions.md",
 		"format:go": "gofmt -w cmd internal gen/go",
 		"format:go:check": "test -z \"$(gofmt -l cmd internal gen/go)\"",
-		"lint:js": "sync/node_modules/.bin/eslint --config eslint.config.js sync scripts",
+		"lint:js": "eslint --config eslint.config.js sync scripts",
 		"lint:go": "PATH=$PWD/.cache/bin:$PATH GOCACHE=${GOCACHE:-$PWD/.cache/go-build} GOMODCACHE=${GOMODCACHE:-$PWD/.cache/go-mod} GOLANGCI_LINT_CACHE=${GOLANGCI_LINT_CACHE:-$PWD/.cache/golangci-lint} golangci-lint run ./cmd/... ./internal/...",
 		"proto:format": "XDG_CACHE_HOME=${XDG_CACHE_HOME:-$PWD/.cache} buf format -w",
 		"proto:generate": "XDG_CACHE_HOME=${XDG_CACHE_HOME:-$PWD/.cache} buf generate",
 		"proto:lint": "XDG_CACHE_HOME=${XDG_CACHE_HOME:-$PWD/.cache} buf lint",
 		"test:go": "GOCACHE=${GOCACHE:-$PWD/.cache/go-build} GOMODCACHE=${GOMODCACHE:-$PWD/.cache/go-mod} go test ./cmd/... ./internal/... ./gen/go/...",
-		"smoke:auth": "node scripts/local-auth-smoke.mjs",
-		"smoke:pomerium": "node scripts/local-pomerium-smoke.mjs",
-		"check": "npm run format:check && npm run proto:lint && npm run format:go:check && npm run test:go && npm run lint:go && npm --prefix sync run check:code"
+		"smoke:auth": "node scripts/local-auth-smoke.mts",
+		"smoke:pomerium": "node scripts/local-pomerium-smoke.mts",
+		"typecheck": "tsc --noEmit",
+		"check": "npm run format:check && npm run proto:lint && npm run format:go:check && npm run typecheck && npm run test:go && npm run lint:go && npm --prefix sync run check:code"
 	},
 	"devDependencies": {
 		"@bufbuild/buf": "^1.68.4",
+		"@eslint/js": "^10.0.1",
+		"@types/node": "^26.1.1",
 		"@usebruno/cli": "^3.5.2",
-		"prettier": "^3.6.2"
+		"eslint": "^10.7.0",
+		"eslint-config-prettier": "^10.1.8",
+		"globals": "^17.7.0",
+		"prettier": "^3.6.2",
+		"typescript": "^6.0.3",
+		"typescript-eslint": "^8.64.0"
 	},
 	"allowScripts": {
 		"@bufbuild/buf@1.68.4": true,

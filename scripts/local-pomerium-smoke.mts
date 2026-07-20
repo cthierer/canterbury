@@ -5,16 +5,48 @@ import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
+type ReadNoteBody = {
+	ref: {
+		path: string
+	}
+}
+
+type VaultResponse = {
+	status: number
+	body: unknown
+}
+
+type AuditEvent = {
+	event_type?: unknown
+}
+
 const execFileAsync = promisify(execFile)
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const localPomeriumDir = join(root, 'deploy', 'local-pomerium')
 
-const loadLocalEnv = async path => {
+const hasErrorCode = (error: unknown, code: string) => {
+	return (
+		typeof error === 'object' &&
+		error !== null &&
+		'code' in error &&
+		(error as { code?: unknown }).code === code
+	)
+}
+
+const getErrorMessage = (error: unknown) => {
+	return error instanceof Error ? error.message : String(error)
+}
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+	return typeof value === 'object' && value !== null
+}
+
+const loadLocalEnv = async (path: string) => {
 	let data
 	try {
 		data = await readFile(path, 'utf8')
 	} catch (error) {
-		if (error.code === 'ENOENT') {
+		if (hasErrorCode(error, 'ENOENT')) {
 			return
 		}
 
@@ -43,7 +75,7 @@ const ensurePomeriumCACert = () => {
 
 	if (!existsSync(pomeriumCACert)) {
 		throw new Error(
-			`missing Pomerium CA certificate at ${pomeriumCACert}; run scripts/setup-local-pomerium.mjs first`,
+			`missing Pomerium CA certificate at ${pomeriumCACert}; run scripts/setup-local-pomerium.mts first`,
 		)
 	}
 
@@ -58,12 +90,20 @@ const ensurePomeriumCACert = () => {
 	process.exit(result.status ?? 1)
 }
 
-const mintIDToken = async username => {
+const getDexClientSecret = () => {
+	if (!dexClientSecret) {
+		throw new Error('missing DEX_CLIENT_SECRET; run scripts/setup-local-pomerium.mts first')
+	}
+
+	return dexClientSecret
+}
+
+const mintIDToken = async (username: string) => {
 	const body = new URLSearchParams({
 		grant_type: 'password',
 		scope: 'openid profile email',
 		client_id: dexClientID,
-		client_secret: dexClientSecret,
+		client_secret: getDexClientSecret(),
 		username,
 		password: testPassword,
 	})
@@ -77,6 +117,12 @@ const mintIDToken = async username => {
 	})
 
 	const payload = await parseJSON(response)
+	if (!isRecord(payload)) {
+		throw new Error(
+			`mint Dex token for ${username}: unexpected response ${JSON.stringify(payload)}`,
+		)
+	}
+
 	if (!response.ok) {
 		throw new Error(
 			`mint Dex token for ${username}: HTTP ${response.status} ${JSON.stringify(payload)}`,
@@ -90,28 +136,38 @@ const mintIDToken = async username => {
 	return payload.id_token
 }
 
-const assertReadSucceeds = async (token, path) => {
+const assertReadSucceeds = async (token: string, path: string) => {
 	const response = await postVault('ReadNote', readNoteBody(path), token)
 	if (response.status !== 200) {
 		throw new Error(`read ${path}: HTTP ${response.status} ${JSON.stringify(response.body)}`)
 	}
 
-	if (response.body?.note?.ref?.path !== path) {
+	const notePath =
+		isRecord(response.body) &&
+		isRecord(response.body.note) &&
+		isRecord(response.body.note.ref) &&
+		response.body.note.ref.path
+	if (notePath !== path) {
 		throw new Error(`read ${path}: unexpected response ${JSON.stringify(response.body)}`)
 	}
 }
 
-const assertReadDenied = async (token, path, status, code) => {
+const assertReadDenied = async (token: string, path: string, status: number, code: string) => {
 	const response = await postVault('ReadNote', readNoteBody(path), token)
-	if (response.status !== status || response.body?.code !== code) {
+	const responseCode = isRecord(response.body) ? response.body.code : undefined
+	if (response.status !== status || responseCode !== code) {
 		throw new Error(
 			`read ${path}: got HTTP ${response.status} ${JSON.stringify(response.body)}, want HTTP ${status} ${code}`,
 		)
 	}
 }
 
-const postVault = async (method, body, token) => {
-	const headers = {
+const postVault = async (
+	method: string,
+	body: ReadNoteBody,
+	token?: string,
+): Promise<VaultResponse> => {
+	const headers: Record<string, string> = {
 		'content-type': 'application/json',
 	}
 
@@ -132,7 +188,7 @@ const postVault = async (method, body, token) => {
 	}
 }
 
-const readNoteBody = path => {
+const readNoteBody = (path: string): ReadNoteBody => {
 	return {
 		ref: {
 			path,
@@ -140,9 +196,9 @@ const readNoteBody = path => {
 	}
 }
 
-const waitForHTTP = async (url, label) => {
+const waitForHTTP = async (url: string, label: string) => {
 	const deadline = Date.now() + 30_000
-	let lastError
+	let lastError: unknown
 
 	while (Date.now() < deadline) {
 		try {
@@ -159,10 +215,10 @@ const waitForHTTP = async (url, label) => {
 		await sleep(500)
 	}
 
-	throw new Error(`timed out waiting for ${label}: ${lastError?.message ?? 'no response'}`)
+	throw new Error(`timed out waiting for ${label}: ${getErrorMessage(lastError ?? 'no response')}`)
 }
 
-const waitForAuditFailure = async previousCount => {
+const waitForAuditFailure = async (previousCount: number) => {
 	const deadline = Date.now() + 10_000
 
 	while (Date.now() < deadline) {
@@ -182,11 +238,11 @@ const countAuthFailures = async () => {
 	return events.filter(event => event.event_type === 'auth.failed').length
 }
 
-const readAuditEvents = async () => {
+const readAuditEvents = async (): Promise<AuditEvent[]> => {
 	try {
 		return await readHostAuditEvents(auditRoot)
 	} catch (error) {
-		if (error.code !== 'EACCES' && error.code !== 'EPERM') {
+		if (!hasErrorCode(error, 'EACCES') && !hasErrorCode(error, 'EPERM')) {
 			throw error
 		}
 
@@ -194,19 +250,19 @@ const readAuditEvents = async () => {
 	}
 }
 
-const readHostAuditEvents = async directory => {
+const readHostAuditEvents = async (directory: string): Promise<AuditEvent[]> => {
 	let entries
 	try {
 		entries = await readdir(directory, { withFileTypes: true })
 	} catch (error) {
-		if (error.code === 'ENOENT') {
+		if (hasErrorCode(error, 'ENOENT')) {
 			return []
 		}
 
 		throw error
 	}
 
-	const events = []
+	const events: AuditEvent[] = []
 	for (const entry of entries) {
 		const path = join(directory, entry.name)
 		if (entry.isDirectory()) {
@@ -222,7 +278,7 @@ const readHostAuditEvents = async directory => {
 	return events
 }
 
-const readContainerAuditEvents = async () => {
+const readContainerAuditEvents = async (): Promise<AuditEvent[]> => {
 	const { stdout } = await execFileAsync(
 		'docker',
 		[
@@ -240,20 +296,20 @@ const readContainerAuditEvents = async () => {
 	return parseJSONLines(stdout)
 }
 
-const parseJSONLines = data => {
-	const events = []
+const parseJSONLines = (data: string): AuditEvent[] => {
+	const events: AuditEvent[] = []
 	for (const line of data.split('\n')) {
 		if (line.trim() === '') {
 			continue
 		}
 
-		events.push(JSON.parse(line))
+		events.push(JSON.parse(line) as AuditEvent)
 	}
 
 	return events
 }
 
-const parseJSON = async response => {
+const parseJSON = async (response: Response): Promise<unknown> => {
 	const text = await response.text()
 	if (text.trim() === '') {
 		return null
@@ -266,8 +322,8 @@ const parseJSON = async response => {
 	}
 }
 
-const sleep = ms => {
-	return new Promise(resolve => {
+const sleep = (ms: number) => {
+	return new Promise<void>(resolve => {
 		setTimeout(resolve, ms)
 	})
 }
@@ -285,7 +341,7 @@ const dexClientSecret = process.env.DEX_CLIENT_SECRET
 const testPassword = process.env.DEX_TEST_PASSWORD ?? 'password'
 
 if (!dexClientSecret) {
-	throw new Error('missing DEX_CLIENT_SECRET; run scripts/setup-local-pomerium.mjs first')
+	throw new Error('missing DEX_CLIENT_SECRET; run scripts/setup-local-pomerium.mts first')
 }
 
 ensurePomeriumCACert()

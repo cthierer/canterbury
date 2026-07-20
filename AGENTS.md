@@ -117,6 +117,7 @@ This runs:
 - `gofmt` checks
 - `go test ./cmd/... ./internal/... ./gen/go/...`
 - `golangci-lint run ./cmd/... ./internal/...`
+- `tsc --noEmit`
 - `node --check sync.js`
 - `eslint .`
 
