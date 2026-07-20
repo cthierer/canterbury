@@ -6,6 +6,7 @@ import { execFileSync } from 'node:child_process'
 import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+/** Environment-file values parsed from KEY=value lines. */
 type EnvValues = Record<string, string>
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
@@ -19,6 +20,7 @@ const keyDir = join(generatedDir, 'keys')
 
 process.umask(0o077)
 
+/** Exits early with a clear message when the local OpenSSL CLI is unavailable. */
 const ensureOpenSSL = () => {
 	try {
 		execFileSync('openssl', ['version'], { stdio: 'ignore' })
@@ -28,10 +30,12 @@ const ensureOpenSSL = () => {
 	}
 }
 
+/** Generates a base64-encoded 256-bit secret for local-only credentials. */
 const randomBase64 = () => {
 	return randomBytes(32).toString('base64')
 }
 
+/** Builds the UID/GID environment prefix used by the local Docker Compose stack. */
 const composeUserEnv = () => {
 	if (typeof process.getuid === 'function' && typeof process.getgid === 'function') {
 		return `CANTERBURY_UID=${process.getuid()} CANTERBURY_GID=${process.getgid()}`
@@ -40,6 +44,7 @@ const composeUserEnv = () => {
 	return 'CANTERBURY_UID=$(id -u) CANTERBURY_GID=$(id -g)'
 }
 
+/** Checks Node-style thrown values for a specific filesystem or process error code. */
 const hasErrorCode = (error: unknown, code: string) => {
 	return (
 		typeof error === 'object' &&
@@ -49,10 +54,12 @@ const hasErrorCode = (error: unknown, code: string) => {
 	)
 }
 
+/** Returns a useful message for unknown caught values. */
 const getErrorMessage = (error: unknown) => {
 	return error instanceof Error ? error.message : String(error)
 }
 
+/** Reads an optional local.env file without overwriting missing files as errors. */
 const readEnvFile = async (path: string): Promise<EnvValues> => {
 	let data
 	try {
@@ -85,6 +92,7 @@ const readEnvFile = async (path: string): Promise<EnvValues> => {
 	return values
 }
 
+/** Renders a generated config file by replacing explicit template placeholders. */
 const renderTemplate = async (
 	source: string,
 	destination: string,
@@ -99,10 +107,12 @@ const renderTemplate = async (
 	await writeFileWithMode(destination, content, mode)
 }
 
+/** Writes sensitive local configuration with owner-only file permissions. */
 const writeSecretFile = async (destination: string, content: string) => {
 	await writeFileWithMode(destination, content, 0o600)
 }
 
+/** Atomically writes a file and applies the requested POSIX mode after rename. */
 const writeFileWithMode = async (destination: string, content: string, mode: number) => {
 	const temporary = `${destination}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
 	try {

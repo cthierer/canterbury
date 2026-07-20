@@ -5,17 +5,20 @@ import { dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import { fileURLToPath } from 'node:url'
 
+/** Minimal Connect JSON request body for VaultService.ReadNote. */
 type ReadNoteBody = {
 	ref: {
 		path: string
 	}
 }
 
+/** Parsed response envelope returned by the Pomerium-proxied vault endpoint. */
 type VaultResponse = {
 	status: number
 	body: unknown
 }
 
+/** Audit event shape used by this smoke test. */
 type AuditEvent = {
 	event_type?: unknown
 }
@@ -24,6 +27,7 @@ const execFileAsync = promisify(execFile)
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const localPomeriumDir = join(root, 'deploy', 'local-pomerium')
 
+/** Checks Node-style thrown values for a specific filesystem or process error code. */
 const hasErrorCode = (error: unknown, code: string) => {
 	return (
 		typeof error === 'object' &&
@@ -33,14 +37,17 @@ const hasErrorCode = (error: unknown, code: string) => {
 	)
 }
 
+/** Returns a useful message for unknown caught values. */
 const getErrorMessage = (error: unknown) => {
 	return error instanceof Error ? error.message : String(error)
 }
 
+/** Narrows parsed JSON to an object before reading nested response fields. */
 const isRecord = (value: unknown): value is Record<string, unknown> => {
 	return typeof value === 'object' && value !== null
 }
 
+/** Loads local.env values only when the caller has not already provided them. */
 const loadLocalEnv = async (path: string) => {
 	let data
 	try {
@@ -68,6 +75,7 @@ const loadLocalEnv = async (path: string) => {
 	}
 }
 
+/** Restarts the script with the generated Pomerium CA when HTTPS verification needs it. */
 const ensurePomeriumCACert = () => {
 	if (!pomeriumBaseURL.startsWith('https://') || process.env.NODE_EXTRA_CA_CERTS) {
 		return
@@ -90,6 +98,7 @@ const ensurePomeriumCACert = () => {
 	process.exit(result.status ?? 1)
 }
 
+/** Returns the Dex client secret after the startup validation has run. */
 const getDexClientSecret = () => {
 	if (!dexClientSecret) {
 		throw new Error('missing DEX_CLIENT_SECRET; run scripts/setup-local-pomerium.mts first')
@@ -98,6 +107,7 @@ const getDexClientSecret = () => {
 	return dexClientSecret
 }
 
+/** Mints a password-grant ID token for one local Dex test user. */
 const mintIDToken = async (username: string) => {
 	const body = new URLSearchParams({
 		grant_type: 'password',
@@ -136,6 +146,7 @@ const mintIDToken = async (username: string) => {
 	return payload.id_token
 }
 
+/** Verifies that an authorized token can read the requested note path. */
 const assertReadSucceeds = async (token: string, path: string) => {
 	const response = await postVault('ReadNote', readNoteBody(path), token)
 	if (response.status !== 200) {
@@ -152,6 +163,7 @@ const assertReadSucceeds = async (token: string, path: string) => {
 	}
 }
 
+/** Verifies that a token is rejected with the expected Connect error response. */
 const assertReadDenied = async (token: string, path: string, status: number, code: string) => {
 	const response = await postVault('ReadNote', readNoteBody(path), token)
 	const responseCode = isRecord(response.body) ? response.body.code : undefined
@@ -162,6 +174,7 @@ const assertReadDenied = async (token: string, path: string, status: number, cod
 	}
 }
 
+/** Posts a Connect JSON request through Pomerium to the vault service. */
 const postVault = async (
 	method: string,
 	body: ReadNoteBody,
@@ -188,6 +201,7 @@ const postVault = async (
 	}
 }
 
+/** Builds the request body for VaultService.ReadNote. */
 const readNoteBody = (path: string): ReadNoteBody => {
 	return {
 		ref: {
@@ -196,6 +210,7 @@ const readNoteBody = (path: string): ReadNoteBody => {
 	}
 }
 
+/** Polls an HTTP endpoint until it returns a successful status or the deadline expires. */
 const waitForHTTP = async (url: string, label: string) => {
 	const deadline = Date.now() + 30_000
 	let lastError: unknown
@@ -218,6 +233,7 @@ const waitForHTTP = async (url: string, label: string) => {
 	throw new Error(`timed out waiting for ${label}: ${getErrorMessage(lastError ?? 'no response')}`)
 }
 
+/** Waits until the audit log records a new authentication failure event. */
 const waitForAuditFailure = async (previousCount: number) => {
 	const deadline = Date.now() + 10_000
 
@@ -233,11 +249,13 @@ const waitForAuditFailure = async (previousCount: number) => {
 	throw new Error('timed out waiting for auth.failed audit event')
 }
 
+/** Counts auth.failed events across all readable audit log files. */
 const countAuthFailures = async () => {
 	const events = await readAuditEvents()
 	return events.filter(event => event.event_type === 'auth.failed').length
 }
 
+/** Reads audit events from the host path, falling back to the container for permission issues. */
 const readAuditEvents = async (): Promise<AuditEvent[]> => {
 	try {
 		return await readHostAuditEvents(auditRoot)
@@ -250,6 +268,7 @@ const readAuditEvents = async (): Promise<AuditEvent[]> => {
 	}
 }
 
+/** Recursively reads JSONL audit events from the host filesystem. */
 const readHostAuditEvents = async (directory: string): Promise<AuditEvent[]> => {
 	let entries
 	try {
@@ -278,6 +297,7 @@ const readHostAuditEvents = async (directory: string): Promise<AuditEvent[]> => 
 	return events
 }
 
+/** Reads JSONL audit events from the running vault-service container. */
 const readContainerAuditEvents = async (): Promise<AuditEvent[]> => {
 	const { stdout } = await execFileAsync(
 		'docker',
@@ -296,6 +316,7 @@ const readContainerAuditEvents = async (): Promise<AuditEvent[]> => {
 	return parseJSONLines(stdout)
 }
 
+/** Parses newline-delimited JSON audit events, ignoring empty lines. */
 const parseJSONLines = (data: string): AuditEvent[] => {
 	const events: AuditEvent[] = []
 	for (const line of data.split('\n')) {
@@ -309,6 +330,7 @@ const parseJSONLines = (data: string): AuditEvent[] => {
 	return events
 }
 
+/** Parses a response body as JSON, preserving raw text for non-JSON error bodies. */
 const parseJSON = async (response: Response): Promise<unknown> => {
 	const text = await response.text()
 	if (text.trim() === '') {
@@ -322,6 +344,7 @@ const parseJSON = async (response: Response): Promise<unknown> => {
 	}
 }
 
+/** Waits for a small polling interval. */
 const sleep = (ms: number) => {
 	return new Promise<void>(resolve => {
 		setTimeout(resolve, ms)

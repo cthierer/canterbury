@@ -7,11 +7,13 @@ import { spawn } from 'node:child_process'
 import type { ChildProcessByStdio } from 'node:child_process'
 import type { Readable } from 'node:stream'
 
+/** Options for a foreground child process whose stdio is inherited by the smoke run. */
 type ForegroundOptions = {
 	cwd: string
 	env: NodeJS.ProcessEnv
 }
 
+/** Background service child with ignored stdin and captured stdout/stderr. */
 type ManagedChild = ChildProcessByStdio<null, Readable, Readable>
 
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
@@ -25,6 +27,7 @@ const children: ManagedChild[] = []
 let shuttingDown = false
 let cleanupStarted = false
 
+/** Starts a labeled background service and prefixes its output for readable logs. */
 const startProcess = (
 	label: string,
 	command: readonly [string, ...string[]],
@@ -56,6 +59,7 @@ const startProcess = (
 	return child
 }
 
+/** Runs the Bruno smoke collection in the foreground and returns its exit status. */
 const runForeground = (command: string, args: string[], options: ForegroundOptions) => {
 	return new Promise<number>((resolve, reject) => {
 		const child = spawn(command, args, {
@@ -76,10 +80,12 @@ const runForeground = (command: string, args: string[], options: ForegroundOptio
 	})
 }
 
+/** Returns a useful message for unknown caught values. */
 const getErrorMessage = (error: unknown) => {
 	return error instanceof Error ? error.message : String(error)
 }
 
+/** Checks Node-style thrown values for a specific filesystem or process error code. */
 const hasErrorCode = (error: unknown, code: string) => {
 	return (
 		typeof error === 'object' &&
@@ -89,6 +95,7 @@ const hasErrorCode = (error: unknown, code: string) => {
 	)
 }
 
+/** Polls an HTTP endpoint until it returns a successful status or the deadline expires. */
 const waitForHTTP = async (url: string, label: string) => {
 	const deadline = Date.now() + 20_000
 	let lastError: unknown
@@ -111,6 +118,7 @@ const waitForHTTP = async (url: string, label: string) => {
 	throw new Error(`timed out waiting for ${label}: ${getErrorMessage(lastError ?? 'no response')}`)
 }
 
+/** Polls a host:port listener until a TCP connection succeeds or the deadline expires. */
 const waitForTCP = async (address: string, label: string) => {
 	const [host, portString] = splitHostPort(address)
 	const port = Number(portString)
@@ -131,6 +139,7 @@ const waitForTCP = async (address: string, label: string) => {
 	throw new Error(`timed out waiting for ${label}: ${getErrorMessage(lastError ?? 'no listener')}`)
 }
 
+/** Attempts one short-lived TCP connection for readiness probing. */
 const connectOnce = (host: string, port: number) => {
 	return new Promise<void>((resolve, reject) => {
 		const socket = createConnection({ host, port })
@@ -146,11 +155,13 @@ const connectOnce = (host: string, port: number) => {
 	})
 }
 
+/** Stops background services in reverse startup order. */
 const stopChildren = async () => {
 	shuttingDown = true
 	await Promise.all([...children].reverse().map(child => stopChild(child)))
 }
 
+/** Performs idempotent process shutdown and temporary audit-directory cleanup. */
 const cleanup = async () => {
 	if (cleanupStarted) {
 		return
@@ -161,6 +172,7 @@ const cleanup = async () => {
 	await rm(auditRoot, { recursive: true, force: true })
 }
 
+/** Gracefully terminates a child process, escalating to SIGKILL after a timeout. */
 const stopChild = (child: ManagedChild) => {
 	return new Promise<void>(resolve => {
 		if (child.exitCode !== null || child.signalCode !== null) {
@@ -182,6 +194,7 @@ const stopChild = (child: ManagedChild) => {
 	})
 }
 
+/** Sends a signal to the child process group when possible. */
 const killChild = (child: ManagedChild, signal: NodeJS.Signals) => {
 	try {
 		if (process.platform === 'win32') {
@@ -201,6 +214,7 @@ const killChild = (child: ManagedChild, signal: NodeJS.Signals) => {
 	}
 }
 
+/** Splits a host:port address while rejecting values without a host component. */
 const splitHostPort = (address: string) => {
 	const separator = address.lastIndexOf(':')
 	if (separator < 1) {
@@ -210,6 +224,7 @@ const splitHostPort = (address: string) => {
 	return [address.slice(0, separator), address.slice(separator + 1)]
 }
 
+/** Prefixes child-process output lines while preserving a trailing partial line. */
 const prefixLines = (label: string, chunk: Buffer) => {
 	return chunk
 		.toString()
@@ -224,6 +239,7 @@ const prefixLines = (label: string, chunk: Buffer) => {
 		.join('\n')
 }
 
+/** Waits for a small polling interval. */
 const sleep = (ms: number) => {
 	return new Promise<void>(resolve => {
 		setTimeout(resolve, ms)
