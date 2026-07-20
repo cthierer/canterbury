@@ -17,6 +17,84 @@ const keyDir = join(generatedDir, 'keys')
 
 process.umask(0o077)
 
+const ensureOpenSSL = () => {
+	try {
+		execFileSync('openssl', ['version'], { stdio: 'ignore' })
+	} catch {
+		console.error('Missing required command: openssl. Install OpenSSL and retry.')
+		process.exit(1)
+	}
+}
+
+const randomBase64 = () => {
+	return randomBytes(32).toString('base64')
+}
+
+const composeUserEnv = () => {
+	if (typeof process.getuid === 'function' && typeof process.getgid === 'function') {
+		return `CANTERBURY_UID=${process.getuid()} CANTERBURY_GID=${process.getgid()}`
+	}
+
+	return 'CANTERBURY_UID=$(id -u) CANTERBURY_GID=$(id -g)'
+}
+
+const readEnvFile = async path => {
+	let data
+	try {
+		data = await readFile(path, 'utf8')
+	} catch (error) {
+		if (error.code === 'ENOENT') {
+			return {}
+		}
+
+		throw new Error(`Failed to read local environment file at ${path}: ${error.message}`, {
+			cause: error,
+		})
+	}
+
+	const values = {}
+	for (const line of data.split('\n')) {
+		const trimmed = line.trim()
+		if (trimmed === '' || trimmed.startsWith('#')) {
+			continue
+		}
+
+		const separator = trimmed.indexOf('=')
+		if (separator === -1) {
+			continue
+		}
+
+		values[trimmed.slice(0, separator)] = trimmed.slice(separator + 1)
+	}
+
+	return values
+}
+
+const renderTemplate = async (source, destination, replacements, mode) => {
+	let content = await readFile(source, 'utf8')
+	for (const [placeholder, value] of Object.entries(replacements)) {
+		content = content.replaceAll(placeholder, value)
+	}
+
+	await writeFileWithMode(destination, content, mode)
+}
+
+const writeSecretFile = async (destination, content) => {
+	await writeFileWithMode(destination, content, 0o600)
+}
+
+const writeFileWithMode = async (destination, content, mode) => {
+	const temporary = `${destination}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
+	try {
+		await writeFile(temporary, content, { mode })
+		await rename(temporary, destination)
+		await chmod(destination, mode)
+	} catch (error) {
+		await unlink(temporary).catch(() => undefined)
+		throw error
+	}
+}
+
 ensureOpenSSL()
 
 await mkdir(certDir, { recursive: true })
@@ -109,79 +187,3 @@ console.log(`Local Pomerium files generated in ${generatedDir}`)
 console.log(`Local environment written to ${envFile}`)
 console.log(`Start the stack with: ${composeUserEnv()} docker compose up --build`)
 console.log('Run the smoke test with: make smoke-pomerium')
-
-function ensureOpenSSL() {
-	try {
-		execFileSync('openssl', ['version'], { stdio: 'ignore' })
-	} catch {
-		console.error('Missing required command: openssl. Install OpenSSL and retry.')
-		process.exit(1)
-	}
-}
-
-function randomBase64() {
-	return randomBytes(32).toString('base64')
-}
-
-function composeUserEnv() {
-	if (typeof process.getuid === 'function' && typeof process.getgid === 'function') {
-		return `CANTERBURY_UID=${process.getuid()} CANTERBURY_GID=${process.getgid()}`
-	}
-
-	return 'CANTERBURY_UID=$(id -u) CANTERBURY_GID=$(id -g)'
-}
-
-async function readEnvFile(path) {
-	let data
-	try {
-		data = await readFile(path, 'utf8')
-	} catch (error) {
-		if (error.code === 'ENOENT') {
-			return {}
-		}
-
-		throw new Error(`Failed to read local environment file at ${path}: ${error.message}`)
-	}
-
-	const values = {}
-	for (const line of data.split('\n')) {
-		const trimmed = line.trim()
-		if (trimmed === '' || trimmed.startsWith('#')) {
-			continue
-		}
-
-		const separator = trimmed.indexOf('=')
-		if (separator === -1) {
-			continue
-		}
-
-		values[trimmed.slice(0, separator)] = trimmed.slice(separator + 1)
-	}
-
-	return values
-}
-
-async function renderTemplate(source, destination, replacements, mode) {
-	let content = await readFile(source, 'utf8')
-	for (const [placeholder, value] of Object.entries(replacements)) {
-		content = content.replaceAll(placeholder, value)
-	}
-
-	await writeFileWithMode(destination, content, mode)
-}
-
-async function writeSecretFile(destination, content) {
-	await writeFileWithMode(destination, content, 0o600)
-}
-
-async function writeFileWithMode(destination, content, mode) {
-	const temporary = `${destination}.${process.pid}.${randomBytes(4).toString('hex')}.tmp`
-	try {
-		await writeFile(temporary, content, { mode })
-		await rename(temporary, destination)
-		await chmod(destination, mode)
-	} catch (error) {
-		await unlink(temporary).catch(() => undefined)
-		throw error
-	}
-}
