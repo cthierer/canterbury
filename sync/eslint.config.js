@@ -1,22 +1,5 @@
-import js from '@eslint/js'
-import prettier from 'eslint-config-prettier'
-import globals from 'globals'
+import { createRequire } from 'node:module'
 
-export default [
-	{
-		ignores: ['node_modules/**'],
-	},
-	js.configs.recommended,
-	{
-		files: ['**/*.js'],
-		languageOptions: {
-			ecmaVersion: 'latest',
-			globals: {
-				...globals.nodeBuiltin,
-				...globals.node,
-			},
-			sourceType: 'module',
-		},
-	},
-	prettier,
-]
+const require = createRequire(import.meta.url)
+
+export default require('../eslint.config.js')

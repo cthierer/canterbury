@@ -4,8 +4,8 @@
 	"main": "index.js",
 	"type": "module",
 	"scripts": {
-		"lint": "eslint .",
-		"lint:fix": "eslint . --fix",
+		"lint": "npm --prefix .. run lint:js",
+		"lint:fix": "npm --prefix .. run lint:js -- --fix",
 		"check:code": "node --check sync.js && npm run lint",
 		"check": "npm run check:code && npm --prefix .. run format:check"
 	},
