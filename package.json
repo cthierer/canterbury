@@ -2,6 +2,7 @@
 	"name": "canterbury",
 	"version": "1.0.0",
 	"private": true,
+	"license": "MIT",
 	"scripts": {
 		"format": "prettier --write . && npm run proto:format && npm run format:go",
 		"format:check": "prettier --check .",
