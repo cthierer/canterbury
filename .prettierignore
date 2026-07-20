@@ -1,0 +1,11 @@
+.cache/
+audit/
+deploy/local-pomerium/.generated/
+deploy/local-pomerium/local.env
+gen/go/
+node_modules/
+sample-vault/
+sync/node_modules/
+
+.env
+sync/.env
