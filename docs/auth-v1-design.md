@@ -35,6 +35,8 @@ Auth V1 currently provides:
 - A local `dev-auth` service that mints EdDSA JWTs and serves a JWKS endpoint
   for local development and smoke tests.
 - A local Pomerium/Dex Docker Compose stack for deployed-style gateway testing.
+- A stateless MCP gateway that requires one bearer assertion per HTTP request
+  and forwards it to the vault service.
 
 Auth V1 does not yet provide:
 
@@ -42,7 +44,7 @@ Auth V1 does not yet provide:
 - Dynamic reload of the scope mapping file.
 - `auth.succeeded` audit events.
 - Authentication for health or reflection endpoints.
-- MCP-facing auth behavior, because the MCP interface is not implemented yet.
+- MCP-native OAuth discovery and authorization flows.
 - Write-path authorization, because write operations are not implemented yet.
 
 ## Request Flow
@@ -51,6 +53,7 @@ Auth V1 does not yet provide:
 Client or MCP host
   -> Pomerium or dev-auth token issuer
   -> Authorization: Bearer <signed JWT>
+  -> optional stateless MCP gateway forwards the same assertion
   -> Canterbury Connect/gRPC vault handler
   -> audit context interceptor attaches request metadata
   -> auth context interceptor validates JWT
@@ -87,6 +90,12 @@ VAULT_SERVICE_AUTH_MAPPING_FILE=/auth/scopes.toml
 There is no separate no-auth mode for vault RPCs. The old process-wide
 `VAULT_SERVICE_AUTH_SCOPES` model has been replaced by per-request principals
 resolved from signed assertions.
+
+The MCP server requires exactly one syntactically valid bearer header on every
+`POST /mcp` request. It forwards that value unchanged to the internal vault
+Connect client along with `X-Request-ID` and `traceparent`. Its Streamable HTTP
+transport is stateless, so authorization is always tied to the current HTTP
+request rather than stored in an MCP session.
 
 ## Scope Mapping
 
@@ -270,6 +279,9 @@ make smoke-pomerium
 - `internal/app/authctx`: context helpers for request principals.
 - `internal/interfaces/vaultrpc`: auth and audit context interceptors for vault
   RPCs.
+- `internal/interfaces/mcphttp`: Streamable HTTP transport, bearer validation,
+  tool allowlisting, and Connect metadata forwarding.
+- `cmd/mcp-server`: MCP configuration, client wiring, and HTTP lifecycle.
 - `cmd/dev-auth`: local development auth service.
 - `internal/app/devauth`, `internal/adapters/devauthjwt`, and
   `internal/interfaces/devrpc`: local token minting support.
@@ -291,7 +303,7 @@ make smoke-pomerium
 ```
 
 The Pomerium smoke test requires the local Docker Compose stack and generated
-local Pomerium files.
+local Pomerium files. It exercises both direct vault RPCs and the `/mcp` route.
 
 ## Security Notes
 
@@ -302,10 +314,12 @@ local Pomerium files.
 - Use stable provider subjects, not emails, in scope mappings.
 - Treat auth mapping files as policy.
 - Treat audit logs as sensitive security records.
+- Keep the MCP listener internal to a trusted proxy that overwrites
+  `Authorization`.
 - Prefer adding new issuers through the same JWT/JWKS validation path rather
   than adding parallel auth modes.
 
 ## Open Follow-Ups
 
-- Revisit Pomerium MCP experimental features after Canterbury has an MCP
-  interface.
+- Revisit Pomerium's experimental MCP-native OAuth mode after its contract and
+  Canterbury's client requirements stabilize.

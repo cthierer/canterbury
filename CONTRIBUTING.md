@@ -5,11 +5,11 @@ focused changes are especially valuable.
 
 ## Project Scope
 
-Canterbury currently implements a Dockerized sync worker in `sync/` and an
-initial local Go vault service with scoped `ReadNote` and `SearchNotes` RPCs.
-Planned components such as MCP tools, independent audit logging, write
-operations, and indexing should remain documented as planned architecture unless
-they exist in the repository.
+Canterbury currently implements a Dockerized sync worker in `sync/`, a local Go
+vault service with scoped `ReadNote` and `SearchNotes` RPCs, independent audit
+logging, and a read-only MCP gateway. Write operations, indexing, and other
+planned components should remain documented as planned architecture unless they
+exist in the repository.
 
 ## Development Setup
 

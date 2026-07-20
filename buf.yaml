@@ -1,6 +1,7 @@
 version: v2
 modules:
   - path: api
+  - path: third_party/redpanda
 lint:
   use:
     - STANDARD

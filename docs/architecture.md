@@ -2,9 +2,10 @@
 
 Canterbury is planned as a controlled service layer between AI agents or other
 integrations and an Obsidian vault. The sync worker and an initial local
-vault service with `ReadNote` and `SearchNotes` RPCs are currently implemented.
-The Go package structure described here is still the intended shape for service
-components as they are added.
+vault service with `ReadNote` and `SearchNotes` RPCs are currently implemented,
+along with a stateless MCP gateway over those RPCs. The Go package structure
+described here is still the intended shape for service components as they are
+added.
 
 ## Package Boundaries
 
@@ -12,6 +13,9 @@ The Go service should use a domain-driven structure:
 
 ```text
 cmd/
+  mcp-server/
+    main.go
+
   vault-service/
     main.go
 
@@ -96,10 +100,10 @@ internal/
       auth_service.go
       mint_token.go
 
-    mcp/
-      tools.go
-      read_note.go
-      search_notes.go
+    mcphttp/
+      authorization.go
+      handler.go
+      metadata.go
 
     rest/
       routes.go
@@ -108,8 +112,8 @@ internal/
 ```
 
 Not every directory exists yet. Create packages only when there is implemented
-behavior to put in them. The current external interface is Connect/gRPC;
-dedicated MCP and REST interfaces remain planned.
+behavior to put in them. The current external interfaces are Connect/gRPC and
+Streamable HTTP MCP; a dedicated REST interface remains planned.
 
 ## Dependency Direction
 
@@ -132,8 +136,9 @@ cmd        -> app + adapters + interfaces
   and `adapters/auditfs`, plus auth and development-auth adapters.
 - `interfaces` adapts external protocols such as Connect/gRPC, MCP, or REST to
   application use cases. Currently includes `interfaces/vaultrpc`,
-  `interfaces/devrpc`, and `interfaces/keyshttp`; dedicated MCP and REST
-  interfaces remain planned.
+  `interfaces/devrpc`, `interfaces/keyshttp`, and `interfaces/mcphttp`; a
+  dedicated REST interface remains planned. The MCP HTTP interface composes the
+  generated vault adapter with bearer and metadata forwarding behavior.
 - `cmd` wires concrete implementations together for an executable.
 
 Domain packages must not import application, adapter, or interface
@@ -207,7 +212,12 @@ Supporting packages in `internal/app/`:
 implementation. Future write operations must not commit successfully without an
 independent audit record.
 
-`internal/interfaces/vaultrpc` is the current vault RPC interface. Future
-`internal/interfaces/mcp` and future `internal/interfaces/rest` should expose
-protocol adapters only. They should translate requests into application use
-cases rather than reading vault files directly.
+`internal/interfaces/vaultrpc` is the vault RPC interface.
+`internal/interfaces/mcphttp` adapts the generated MCP tools to stateless HTTP,
+enforces the bearer-header contract, and forwards request identity and
+correlation metadata through a Connect interceptor. `cmd/mcp-server` retains
+configuration, client construction, and HTTP lifecycle orchestration. This
+keeps the MCP process away from vault files and preserves the vault service's
+authentication, authorization, and mandatory audit boundary. A future
+`internal/interfaces/rest` should likewise expose protocol adapters only rather
+than reading vault files directly.

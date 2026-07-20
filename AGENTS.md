@@ -12,8 +12,9 @@ vault through a controlled service layer. The long-term goal is to allow agents
 to read, search, and eventually write vault content while enforcing explicit
 access policies and recording an independent audit trail outside the vault.
 
-The repository currently implements the **sync worker** and an initial local
-**vault service** with scoped read and search paths.
+The repository currently implements the **sync worker**, a local **vault
+service** with scoped read and search paths, and a stateless HTTP **MCP server**
+for those paths.
 
 ## Current Implemented Components
 
@@ -42,10 +43,25 @@ The vault service lives under `cmd/vault-service` and `internal/` and:
 - Reads Markdown notes from a local filesystem vault mirror.
 - Parses YAML frontmatter, note tags, and note-declared access scopes.
 - Exposes Connect/gRPC health, reflection, `ReadNote`, and `SearchNotes`.
-- Uses a fixed local principal configured by `VAULT_SERVICE_AUTH_SCOPES`.
+- Validates bearer JWTs and maps verified issuer/subject pairs to local scopes.
 - Enforces default-deny access by requiring a matching note `access.scopes`
   value.
 - Strips reserved access-policy frontmatter from returned note properties.
+- Writes mandatory read, search, and authentication audit events outside the
+  vault.
+
+The MCP server lives under `cmd/mcp-server` and:
+
+- Exposes stateless Streamable HTTP with JSON responses at `POST /mcp`.
+- Publishes only the allowlisted `read_note` and `search_notes` tools.
+- Requires one bearer assertion per request and forwards it to the internal
+  vault Connect service with request and trace correlation metadata.
+- Relies on the vault service for authentication, authorization, and mandatory
+  operation audit records.
+
+Its Streamable HTTP handler, bearer middleware, tool allowlist, and metadata
+forwarding interceptor live in `internal/interfaces/mcphttp`; the command owns
+configuration, client wiring, signals, and HTTP lifecycle.
 
 The repository includes `sample-vault/` with small fake notes for local service
 testing and demos.
@@ -56,9 +72,9 @@ The broader system is expected to include:
 
 - **Sync worker**: trusted component with Obsidian credentials.
 - **Vault service**: Go service that exposes controlled access to vault data.
-  Initial read and search paths are implemented; authentication, audit
-  integration, write paths, and indexing remain incomplete.
-- **MCP tools**: AI-facing tool interface for querying vault data.
+  Read, search, authentication, and audit integration are implemented; write
+  paths and indexing remain incomplete.
+- **MCP tools**: read-only AI-facing tool interface for querying vault data.
 - **Authorization and classification**: default-deny access based on
   note-declared access scopes and caller principal scopes.
 - **Audit system**: independent append-only audit records outside the vault.
@@ -181,6 +197,7 @@ clear order.
 - `sample-vault/`: fake notes for local service tests and demos.
 - `cmd/vault-service/main.go`: local vault service executable.
 - `internal/`: Go domain, application, adapter, and interface packages.
+- `docs/maintenance.md`: pinned generator and vendored schema update process.
 - `bruno/canterbury/`: sample Connect/gRPC requests.
 - `package.json`: repository-level formatting and check orchestration.
 - `.prettierrc`: repository-wide Prettier config.

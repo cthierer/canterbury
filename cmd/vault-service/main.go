@@ -17,8 +17,6 @@ import (
 	"connectrpc.com/connect"
 	"connectrpc.com/grpchealth"
 	"connectrpc.com/grpcreflect"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 
 	"github.com/cthierer/canterbury/gen/go/canterbury/vault/v1/vaultv1connect"
 	"github.com/cthierer/canterbury/internal/adapters/auditfs"
@@ -163,10 +161,14 @@ func run() error {
 	reflectV1AlphaPath, reflectV1AlphaHandler := grpcreflect.NewHandlerV1Alpha(reflector)
 	mux.Handle(reflectV1AlphaPath, reflectV1AlphaHandler)
 
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
 	server := &http.Server{
 		Addr:              config.Addr,
-		Handler:           h2c.NewHandler(mux, &http2.Server{}),
+		Handler:           mux,
 		ReadHeaderTimeout: readHeaderTimeout,
+		Protocols:         protocols,
 	}
 
 	errs := make(chan error, 1)

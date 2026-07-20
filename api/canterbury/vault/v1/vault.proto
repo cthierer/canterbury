@@ -4,12 +4,20 @@ package canterbury.vault.v1;
 
 import "google/protobuf/struct.proto";
 import "google/protobuf/timestamp.proto";
+import "mcp/v1/annotations.proto";
 
 option go_package = "github.com/cthierer/canterbury/gen/go/canterbury/vault/v1;vaultv1";
 
 service VaultService {
-  rpc ReadNote(ReadNoteRequest) returns (ReadNoteResponse);
-  rpc SearchNotes(SearchNotesRequest) returns (SearchNotesResponse);
+  // ReadNote reads one authorized Markdown note by its vault-relative path.
+  rpc ReadNote(ReadNoteRequest) returns (ReadNoteResponse) {
+    option (mcp.v1.tool_name) = "read_note";
+  }
+
+  // SearchNotes searches authorized notes by text, path, and tag filters.
+  rpc SearchNotes(SearchNotesRequest) returns (SearchNotesResponse) {
+    option (mcp.v1.tool_name) = "search_notes";
+  }
 }
 
 message ReadNoteRequest {

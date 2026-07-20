@@ -362,7 +362,8 @@ Authentication event names are reserved by Auth V1:
 - `auth.failed`
 - `auth.succeeded`
 
-MCP events are reserved for the future MCP interface:
+Dedicated MCP-layer events are reserved for future audit expansion. Current MCP
+tool calls produce the mandatory underlying vault read/search records only:
 
 - `mcp.tool.called`
 - `mcp.tool.completed`

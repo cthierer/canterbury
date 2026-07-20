@@ -42,7 +42,9 @@ const (
 
 // VaultServiceClient is a client for the canterbury.vault.v1.VaultService service.
 type VaultServiceClient interface {
+	// ReadNote reads one authorized Markdown note by its vault-relative path.
 	ReadNote(context.Context, *connect.Request[v1.ReadNoteRequest]) (*connect.Response[v1.ReadNoteResponse], error)
+	// SearchNotes searches authorized notes by text, path, and tag filters.
 	SearchNotes(context.Context, *connect.Request[v1.SearchNotesRequest]) (*connect.Response[v1.SearchNotesResponse], error)
 }
 
@@ -90,7 +92,9 @@ func (c *vaultServiceClient) SearchNotes(ctx context.Context, req *connect.Reque
 
 // VaultServiceHandler is an implementation of the canterbury.vault.v1.VaultService service.
 type VaultServiceHandler interface {
+	// ReadNote reads one authorized Markdown note by its vault-relative path.
 	ReadNote(context.Context, *connect.Request[v1.ReadNoteRequest]) (*connect.Response[v1.ReadNoteResponse], error)
+	// SearchNotes searches authorized notes by text, path, and tag filters.
 	SearchNotes(context.Context, *connect.Request[v1.SearchNotesRequest]) (*connect.Response[v1.SearchNotesResponse], error)
 }
 

@@ -19,6 +19,7 @@ const auditRoot = process.env.VAULT_SERVICE_AUDIT_ROOT ?? join(root, 'audit')
 const dexClientID = process.env.DEX_CLIENT_ID ?? 'pomerium'
 const dexClientSecret = process.env.DEX_CLIENT_SECRET
 const testPassword = process.env.DEX_TEST_PASSWORD ?? 'password'
+let mcpRequestID = 0
 
 if (!dexClientSecret) {
 	throw new Error('missing DEX_CLIENT_SECRET; run scripts/setup-local-pomerium.mjs first')
@@ -44,6 +45,45 @@ await waitForAuditFailure(authFailuresBefore)
 const missingBearer = await postVault('ReadNote', readNoteBody('Projects/Canterbury.md'))
 if (missingBearer.status >= 200 && missingBearer.status < 300) {
 	throw new Error(`missing bearer request unexpectedly returned HTTP ${missingBearer.status}`)
+}
+
+await assertMCPTools(agentToken)
+
+const readAuditsBefore = await countAuditEvents('vault.read.allowed')
+await assertMCPCallSucceeds(
+	agentToken,
+	'read_note',
+	readNoteBody('Projects/Canterbury.md'),
+	result => {
+		return result?.structuredContent?.note?.ref?.path === 'Projects/Canterbury.md'
+	},
+)
+await waitForAuditEvent('vault.read.allowed', readAuditsBefore)
+
+const searchAuditsBefore = await countAuditEvents('vault.search.completed')
+await assertMCPCallSucceeds(
+	agentToken,
+	'search_notes',
+	{ query: { text: 'Canterbury' }, filter: { includePathPrefixes: ['Projects'] } },
+	result => Array.isArray(result?.structuredContent?.results),
+)
+await waitForAuditEvent('vault.search.completed', searchAuditsBefore)
+
+await assertMCPCallFails(publicToken, 'read_note', readNoteBody('Projects/Canterbury.md'))
+await assertMCPCallSucceeds(
+	publicToken,
+	'search_notes',
+	{ query: { text: 'Service' }, filter: { includePathPrefixes: ['Public'] } },
+	result => result?.structuredContent?.results?.[0]?.ref?.path === 'Public/Service Brief.md',
+)
+await assertMCPCallFails(unmappedToken, 'read_note', readNoteBody('Projects/Canterbury.md'))
+await assertMCPCallFails(unmappedToken, 'search_notes', { query: { text: 'Canterbury' } })
+
+const missingMCPBearer = await postMCP('tools/list', {})
+if (missingMCPBearer.status >= 200 && missingMCPBearer.status < 300) {
+	throw new Error(
+		`missing MCP bearer request unexpectedly returned HTTP ${missingMCPBearer.status}`,
+	)
 }
 
 console.log('local Pomerium smoke passed')
@@ -171,6 +211,66 @@ async function postVault(method, body, token) {
 	}
 }
 
+async function assertMCPTools(token) {
+	const response = await postMCP('tools/list', {}, token)
+	if (response.status !== 200 || response.body?.error) {
+		throw new Error(`list MCP tools: HTTP ${response.status} ${JSON.stringify(response.body)}`)
+	}
+
+	const names = response.body?.result?.tools?.map(tool => tool.name).sort()
+	if (JSON.stringify(names) !== JSON.stringify(['read_note', 'search_notes'])) {
+		throw new Error(`list MCP tools: unexpected names ${JSON.stringify(names)}`)
+	}
+}
+
+async function assertMCPCallSucceeds(token, name, arguments_, validate) {
+	const response = await postMCP('tools/call', { name, arguments: arguments_ }, token)
+	const result = response.body?.result
+	if (response.status !== 200 || response.body?.error || result?.isError || !validate(result)) {
+		throw new Error(
+			`call MCP tool ${name}: HTTP ${response.status} ${JSON.stringify(response.body)}`,
+		)
+	}
+}
+
+async function assertMCPCallFails(token, name, arguments_) {
+	const response = await postMCP('tools/call', { name, arguments: arguments_ }, token)
+	if (response.status !== 200 || response.body?.error || response.body?.result?.isError !== true) {
+		throw new Error(
+			`call denied MCP tool ${name}: HTTP ${response.status} ${JSON.stringify(response.body)}`,
+		)
+	}
+}
+
+async function postMCP(method, params, token) {
+	const headers = {
+		accept: 'application/json, text/event-stream',
+		'content-type': 'application/json',
+		'mcp-protocol-version': '2025-06-18',
+	}
+
+	if (token) {
+		headers.authorization = `Bearer ${token}`
+	}
+
+	const response = await fetch(`${pomeriumBaseURL}/mcp`, {
+		method: 'POST',
+		headers,
+		body: JSON.stringify({
+			jsonrpc: '2.0',
+			id: ++mcpRequestID,
+			method,
+			params,
+		}),
+		redirect: 'manual',
+	})
+
+	return {
+		status: response.status,
+		body: await parseJSON(response),
+	}
+}
+
 function readNoteBody(path) {
 	return {
 		ref: {
@@ -202,10 +302,14 @@ async function waitForHTTP(url, label) {
 }
 
 async function waitForAuditFailure(previousCount) {
+	return waitForAuditEvent('auth.failed', previousCount)
+}
+
+async function waitForAuditEvent(eventType, previousCount) {
 	const deadline = Date.now() + 10_000
 
 	while (Date.now() < deadline) {
-		const currentCount = await countAuthFailures()
+		const currentCount = await countAuditEvents(eventType)
 		if (currentCount > previousCount) {
 			return
 		}
@@ -213,12 +317,16 @@ async function waitForAuditFailure(previousCount) {
 		await sleep(250)
 	}
 
-	throw new Error('timed out waiting for auth.failed audit event')
+	throw new Error(`timed out waiting for ${eventType} audit event`)
 }
 
 async function countAuthFailures() {
+	return countAuditEvents('auth.failed')
+}
+
+async function countAuditEvents(eventType) {
 	const events = await readAuditEvents()
-	return events.filter(event => event.event_type === 'auth.failed').length
+	return events.filter(event => event.event_type === eventType).length
 }
 
 async function readAuditEvents() {

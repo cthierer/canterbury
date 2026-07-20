@@ -5,9 +5,9 @@ vault through a controlled service layer. The long-term goal is to let agents
 read, search, and eventually write vault content while enforcing explicit access
 policies and recording an independent audit trail of every interaction.
 
-This repository currently implements a Dockerized sync worker, an early local Go
-vault service with scoped `ReadNote` and `SearchNotes` RPCs, and a development
-auth helper for minting local JWTs.
+This repository currently implements a Dockerized sync worker, a local Go vault
+service with scoped `ReadNote` and `SearchNotes` RPCs, a stateless HTTP MCP
+gateway for those RPCs, and local authentication tooling.
 
 ## Project Status
 
@@ -27,13 +27,14 @@ Canterbury is in early development. The current implementation includes:
 - Date-rotated JSONL audit logging for vault read/search attempts and
   authentication failures.
 - Connect/gRPC health, reflection, `ReadNote`, and `SearchNotes` handlers.
+- A stateless Streamable HTTP MCP gateway exposing the allowlisted `read_note`
+  and `search_notes` tools at `POST /mcp`.
 - A development auth CLI that starts a local Connect/gRPC service for minting
   local JWTs and serving its public verification key as JWKS.
 - Repository formatting, test, and linting tooling.
 
 Planned or incomplete components include:
 
-- MCP-compatible tools for AI agents.
 - Indexing and plugin-style vault operations.
 - Production identity-provider runbooks and policy-management workflows beyond
   the local Pomerium/Dex and development auth helpers.
@@ -58,10 +59,10 @@ records.
 The current sync worker is useful if you want to run Obsidian Sync in Docker on
 a server, NAS, homelab machine, or cloud container environment.
 
-The current vault service is useful for local development of controlled read
-access over a filesystem mirror of the vault. It is not yet a complete
-agent-facing service because MCP tools, indexing, write workflows, and
-production identity-provider integration are still planned.
+The current vault service and MCP gateway are useful for local development of
+controlled, read-only agent access over a filesystem mirror of the vault.
+Indexing, write workflows, MCP-native OAuth discovery, and production
+identity-provider integration are still planned.
 
 Canterbury is not a replacement for an Obsidian Sync subscription. The sync
 worker requires valid Obsidian Sync credentials and an existing remote vault.
@@ -72,6 +73,8 @@ The intended system has several components:
 
 - **Sync worker**: Mirrors an Obsidian vault using `obsidian-headless`.
 - **Vault service**: Provides the primary controlled interface to vault data.
+- **MCP server**: Adapts an explicit allowlist of vault RPCs into stateless
+  Streamable HTTP tools and forwards each request's bearer assertion.
 - **Authorization and classification**: Grants access only to explicitly scoped
   notes when the caller principal has matching scopes.
 - **Audit system**: Records operations outside the vault in an append-only log.
@@ -79,10 +82,10 @@ The intended system has several components:
 - **Plugin and operation framework**: Runs extensible processing over vault
   events and content.
 
-The current repository implements the sync worker, the first vault service read
-and search paths, JWT-authenticated vault RPCs, a local Pomerium/Dex gateway
-stack, a development JWT issuer, and filesystem JSONL audit logging for read,
-search, and authentication failure events. MCP tools, indexing, and write
+The current repository implements the sync worker, the vault service read and
+search paths, the read-only MCP gateway, JWT-authenticated vault RPCs, a local
+Pomerium/Dex gateway stack, a development JWT issuer, and filesystem JSONL audit
+logging for read, search, and authentication failure events. Indexing and write
 workflows are not implemented yet.
 
 See [Canterbury Architecture](docs/architecture.md) for the planned Go package
@@ -231,6 +234,7 @@ The default Docker Compose stack starts a local deployed-style auth path:
 - Dex as a self-contained OIDC provider.
 - Pomerium Core as the identity-aware gateway.
 - The Canterbury vault service behind Pomerium.
+- The internal Canterbury MCP server, routed through Pomerium at `/mcp`.
 
 Start it from the repository root:
 
@@ -247,6 +251,12 @@ The protected vault route is available at:
 
 ```text
 https://vault.localhost.pomerium.io:8443
+```
+
+The MCP endpoint uses the same protected hostname:
+
+```text
+https://vault.localhost.pomerium.io:8443/mcp
 ```
 
 The stack uses local-only fixture keys, a self-signed certificate, and static
@@ -431,14 +441,45 @@ process writes its own per-day file using `VAULT_SERVICE_AUDIT_WRITER_ID` or a
 generated writer ID. If a required read or search audit record cannot be
 written, the service fails instead of returning data. Authentication failures
 also produce `auth.failed` audit events before the request is rejected. The
-service does not yet expose MCP tools, so keep it bound to a trusted local
-interface while it is in this development shape.
+vault service should remain bound to a trusted internal interface.
 
 The Connect vault handler attaches request-scoped audit metadata to each vault
 RPC. It accepts or generates an `X-Request-ID`, returns that request ID on
 success and error responses, extracts W3C `traceparent` trace IDs when present,
 and records a keyed HMAC-SHA256 hash of the remote client address rather than
 the raw address.
+
+## Run The MCP Server
+
+Start the vault service first, then run the MCP gateway from the repository
+root:
+
+```bash
+go run ./cmd/mcp-server
+```
+
+The gateway serves stateless Streamable HTTP with JSON responses at
+`http://127.0.0.1:50053/mcp`. Every request must contain exactly one
+`Authorization: Bearer <assertion>` header. The gateway forwards that assertion,
+`X-Request-ID`, and `traceparent` to the vault service and does not retain
+identity-bearing MCP session state.
+
+| Variable                           | Default                  | Purpose                                   |
+| ---------------------------------- | ------------------------ | ----------------------------------------- |
+| `MCP_SERVER_ADDR`                  | `127.0.0.1:50053`        | MCP HTTP listen address.                  |
+| `MCP_SERVER_VAULT_BASE_URL`        | `http://127.0.0.1:50051` | Internal Connect vault service base URL.  |
+| `MCP_SERVER_VAULT_REQUEST_TIMEOUT` | `10s`                    | Positive timeout for each downstream RPC. |
+
+The public Compose deployment does not publish the MCP container port. Pomerium
+routes `/mcp` before the catch-all vault route, overwrites `Authorization` with
+its signed assertion, and the gateway forwards that assertion unchanged. The
+shared route hostname keeps Pomerium's JWT issuer and audience aligned with the
+vault service checks. See
+[Pomerium JWT claim headers](https://www.pomerium.com/docs/reference/jwt-claim-headers).
+
+This deployment uses an ordinary protected HTTP route. It does not enable
+Pomerium's experimental MCP-native OAuth mode, so MCP clients must supply a
+bearer credential accepted by the existing Pomerium route.
 
 ## Run The Development Auth Service
 
@@ -597,7 +638,6 @@ npm --prefix sync run check
 
 The planned MVP includes:
 
-- Read-only vault access through MCP-compatible tools.
 - Production identity-provider deployment guidance and more robust
   principal-to-scope policy management.
 - Hardening and operationalizing vault sync through Obsidian Headless.
@@ -632,6 +672,7 @@ storage, and treat host bind mounts as local development overrides.
 - [Auth V1 Design](docs/auth-v1-design.md)
 - [Audit System Design](docs/audit-v1-design.md)
 - [Local Pomerium Stack](docs/local-pomerium.md)
+- [Dependency Maintenance](docs/maintenance.md)
 - [The Good Docs Project README template guide](https://www.thegooddocsproject.dev/template/readme)
 
 ## How To Get Help

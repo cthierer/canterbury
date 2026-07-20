@@ -1,8 +1,33 @@
 version: v2
+inputs:
+  # Third-party modules in buf.yaml resolve imports but are intentionally not
+  # generation inputs. Only Canterbury-owned API files produce output.
+  - directory: api
 plugins:
-  - remote: buf.build/protocolbuffers/go
+  - local:
+      - go
+      - run
+      - google.golang.org/protobuf/cmd/protoc-gen-go
     out: gen/go
     opt: paths=source_relative
-  - remote: buf.build/connectrpc/go
+    # The runtime dependency already provides the Go extension descriptor.
+    # Do not generate a second copy from the vendored annotation schema.
+    exclude_types:
+      - mcp.v1.tool_name
+  - local:
+      - go
+      - run
+      - connectrpc.com/connect/cmd/protoc-gen-connect-go
     out: gen/go
     opt: paths=source_relative
+  - local:
+      - go
+      - run
+      - github.com/redpanda-data/protoc-gen-go-mcp/cmd/protoc-gen-go-mcp
+    out: ./gen/go
+    opt: paths=source_relative
+    # MCP exposure is intentionally opt-in. Add a service here only after its
+    # RPCs have been reviewed as agent-facing tools; runtime allowlists still
+    # control which generated methods are registered.
+    types:
+      - canterbury.vault.v1.VaultService

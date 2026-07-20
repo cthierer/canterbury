@@ -24,8 +24,6 @@ import (
 	"github.com/cthierer/canterbury/internal/interfaces/keyshttp"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 const (
@@ -182,10 +180,14 @@ func serve(cfg serveConfig) error {
 	reflectV1AlphaPath, reflectV1AlphaHandler := grpcreflect.NewHandlerV1Alpha(reflector)
 	mux.Handle(reflectV1AlphaPath, reflectV1AlphaHandler)
 
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
 	server := &http.Server{
 		Addr:              cfg.Addr,
-		Handler:           h2c.NewHandler(mux, &http2.Server{}),
+		Handler:           mux,
 		ReadHeaderTimeout: readHeaderTimeout,
+		Protocols:         protocols,
 	}
 
 	errs := make(chan error, 1)
