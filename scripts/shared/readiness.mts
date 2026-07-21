@@ -9,8 +9,8 @@ export interface ReadinessOptions {
 }
 
 /** Attempts one short-lived TCP connection for readiness probing. */
-const connectOnce = (host: string, port: number) => {
-	return new Promise<void>((resolve, reject) => {
+const connectOnce = (host: string, port: number) =>
+	new Promise<void>((resolve, reject) => {
 		const socket = createConnection({ host, port })
 		socket.setTimeout(500)
 		socket.once('connect', () => {
@@ -22,7 +22,6 @@ const connectOnce = (host: string, port: number) => {
 		})
 		socket.once('error', reject)
 	})
-}
 
 /** Splits a host:port address while rejecting values without a host component. */
 const splitHostPort = (address: string) => {

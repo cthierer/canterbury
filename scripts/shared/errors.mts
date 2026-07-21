@@ -6,11 +6,9 @@ export const hasErrorCode = (error: unknown, code: string) =>
 	(error as { code?: unknown }).code === code
 
 /** Returns a useful message for unknown caught values. */
-export const getErrorMessage = (error: unknown) => {
-	return error instanceof Error ? error.message : String(error)
-}
+export const getErrorMessage = (error: unknown) =>
+	error instanceof Error ? error.message : String(error)
 
 /** Narrows parsed JSON to an object before reading nested response fields. */
-export const isRecord = (value: unknown): value is Record<string, unknown> => {
-	return typeof value === 'object' && value !== null
-}
+export const isRecord = (value: unknown): value is Record<string, unknown> =>
+	typeof value === 'object' && value !== null

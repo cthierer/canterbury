@@ -28,9 +28,7 @@ const ensureOpenSSL = () => {
 }
 
 /** Generates a base64-encoded 256-bit secret for local-only credentials. */
-const randomBase64 = () => {
-	return randomBytes(32).toString('base64')
-}
+const randomBase64 = () => randomBytes(32).toString('base64')
 
 /** Builds the UID/GID environment prefix used by the local Docker Compose stack. */
 const composeUserEnv = () => {

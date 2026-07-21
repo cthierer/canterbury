@@ -59,9 +59,8 @@ export const readHostAuditEvents = async (directory: string): Promise<AuditEvent
 }
 
 /** Counts audit events of a specific type. */
-export const countAuditEvents = (events: readonly AuditEvent[], eventType: string) => {
-	return events.filter(event => event.event_type === eventType).length
-}
+export const countAuditEvents = (events: readonly AuditEvent[], eventType: string) =>
+	events.filter(event => event.event_type === eventType).length
 
 export interface LocalAuditEventReaderOptions {
 	readonly hostAuditRoot: string
@@ -71,13 +70,14 @@ export interface LocalAuditEventReaderOptions {
 }
 
 /** Creates a local audit event reader that falls back to Docker Compose for host permission issues. */
-export const createLocalAuditEventReader = ({
-	hostAuditRoot,
-	dockerComposeCwd,
-	containerName = 'vault-service',
-	containerAuditRoot = '/audit',
-}: LocalAuditEventReaderOptions): AuditEventReader => {
-	return async () => {
+export const createLocalAuditEventReader =
+	({
+		hostAuditRoot,
+		dockerComposeCwd,
+		containerName = 'vault-service',
+		containerAuditRoot = '/audit',
+	}: LocalAuditEventReaderOptions): AuditEventReader =>
+	async () => {
 		try {
 			return await readHostAuditEvents(hostAuditRoot)
 		} catch (error) {
@@ -88,7 +88,6 @@ export const createLocalAuditEventReader = ({
 			return readContainerAuditEvents({ dockerComposeCwd, containerName, containerAuditRoot })
 		}
 	}
-}
 
 /** Reads JSONL audit events from a running Docker Compose service container. */
 export const readContainerAuditEvents = async ({
@@ -114,9 +113,8 @@ export const readContainerAuditEvents = async ({
 }
 
 /** Counts audit events of a specific type across readable audit log files. */
-export const countAuditLogEvents = async (readEvents: AuditEventReader, eventType: string) => {
-	return countAuditEvents(await readEvents(), eventType)
-}
+export const countAuditLogEvents = async (readEvents: AuditEventReader, eventType: string) =>
+	countAuditEvents(await readEvents(), eventType)
 
 /** Waits until the audit log records a new event of the requested type. */
 export const waitForAuditEvent = async (

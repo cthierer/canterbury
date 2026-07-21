@@ -33,11 +33,10 @@ const hasErrorCode = (error: unknown, code: string) =>
 	(error as { code?: unknown }).code === code
 
 /** Waits for a small polling interval. */
-export const sleep = (ms: number) => {
-	return new Promise<void>(resolve => {
+export const sleep = (ms: number) =>
+	new Promise<void>(resolve => {
 		setTimeout(resolve, ms)
 	})
-}
 
 export interface ProcessOptions {
 	cwd?: string

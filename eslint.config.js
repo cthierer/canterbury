@@ -20,6 +20,7 @@ module.exports = tseslint.config(
 			sourceType: 'module',
 		},
 		rules: {
+			'arrow-body-style': ['error', 'as-needed'],
 			'no-restricted-syntax': [
 				'error',
 				{
