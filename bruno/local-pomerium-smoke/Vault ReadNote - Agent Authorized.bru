@@ -1,0 +1,37 @@
+meta {
+  name: Vault ReadNote - Agent Authorized
+  type: http
+  seq: 10
+  tags: [
+    pomerium-vault-auth
+  ]
+}
+
+post {
+  url: {{PomeriumBaseURI}}/canterbury.vault.v1.VaultService/ReadNote
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+  authorization: Bearer {{AgentToken}}
+}
+
+body:json {
+  {
+    "ref": {
+      "path": "Projects/Canterbury.md"
+    }
+  }
+}
+
+tests {
+  const status = typeof res.getStatus === 'function' ? res.getStatus() : res.status;
+  const body = typeof res.getBody === 'function' ? res.getBody() : res.body;
+
+  test('reads scoped project note', function () {
+    expect(status).to.equal(200);
+    expect(body.note.ref.path).to.equal('Projects/Canterbury.md');
+  });
+}

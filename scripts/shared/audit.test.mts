@@ -3,7 +3,13 @@ import { mkdir, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
-import { countAuditEvents, parseJSONLines, readHostAuditEvents } from './audit.mts'
+import {
+	countAuditEvents,
+	createLocalAuditEventReader,
+	parseJSONLines,
+	readHostAuditEvents,
+	runWithAuditEvent,
+} from './audit.mts'
 
 test('parseJSONLines parses non-empty JSONL rows', () => {
 	assert.deepEqual(parseJSONLines('{"event_type":"a"}\n\n{"event_type":"b"}\n'), [
@@ -34,4 +40,18 @@ test('readHostAuditEvents recursively reads JSONL audit files', async () => {
 		{ event_type: 'root' },
 		{ event_type: 'nested' },
 	])
+})
+
+test('runWithAuditEvent waits for an event created by the action', async () => {
+	const root = join(tmpdir(), `canterbury-audit-wait-test-${process.pid}-${Date.now()}`)
+	await mkdir(root, { recursive: true })
+	const auditFile = join(root, 'events.jsonl')
+	const readEvents = createLocalAuditEventReader({
+		hostAuditRoot: root,
+		dockerComposeCwd: process.cwd(),
+	})
+
+	await runWithAuditEvent(readEvents, 'expected.event', async () => {
+		await writeFile(auditFile, '{"event_type":"expected.event"}\n')
+	})
 })

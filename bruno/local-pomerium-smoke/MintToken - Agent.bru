@@ -1,0 +1,44 @@
+meta {
+  name: MintToken - Agent
+  type: http
+  seq: 1
+  tags: [
+    pomerium-vault-auth
+    pomerium-mcp-read-audit
+    pomerium-mcp-search-audit
+    pomerium-mcp-authz
+  ]
+}
+
+post {
+  url: {{DexBaseURI}}/token
+  body: form-urlencoded
+  auth: none
+}
+
+headers {
+  content-type: application/x-www-form-urlencoded
+}
+
+body:form-urlencoded {
+  grant_type: password
+  scope: openid profile email
+  client_id: {{DexClientID}}
+  client_secret: {{DexClientSecret}}
+  username: agent@canterbury.local
+  password: {{DexTestPassword}}
+}
+
+script:post-response {
+  const body = typeof res.getBody === 'function' ? res.getBody() : res.body;
+  bru.setVar('AgentToken', body.id_token);
+}
+
+tests {
+  const body = typeof res.getBody === 'function' ? res.getBody() : res.body;
+
+  test('mints agent ID token', function () {
+    expect(body.id_token).to.be.a('string');
+    expect(body.id_token.length).to.be.greaterThan(20);
+  });
+}
