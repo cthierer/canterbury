@@ -2,8 +2,9 @@
 
 Canterbury is an experimental system for connecting AI agents to an Obsidian
 vault through a controlled service layer. The repository currently implements a
-Dockerized sync worker (`sync/`) and an initial local Go vault service
-(`cmd/vault-service`, `internal/`).
+Dockerized sync worker (`sync/`), a local Go vault service
+(`cmd/vault-service`, `internal/`), and a stateless read-only MCP gateway
+(`cmd/mcp-server`).
 
 Refer to `AGENTS.md` for full project context and `CONTRIBUTING.md` for
 contributor guidelines. The instructions below summarize the most important
@@ -13,8 +14,9 @@ points for coding agents.
 
 - Make the smallest change that addresses the task.
 - Avoid broad refactors unless explicitly requested.
-- Do not add code for planned-but-unimplemented components (MCP tools, audit
-  system, write paths, indexing). Keep planned architecture documented only.
+- Do not add code for planned-but-unimplemented components (write paths,
+  indexing, or dedicated MCP audit events). Keep planned architecture documented
+  only.
 - Do not imply planned components are implemented in code or documentation.
 
 ## Development Setup

@@ -1,11 +1,11 @@
 # Local Pomerium Stack
 
-Canterbury includes a default local Docker Compose stack that puts the vault
-service behind Pomerium Core and uses Dex as a self-contained OpenID Connect
-provider. This is the local precursor to a deployed edge setup: Pomerium
-authenticates the caller, issues its own signed JWT assertion, rewrites that
-assertion into `Authorization: Bearer <jwt>`, and the vault service validates it
-with Pomerium's JWKS before applying Canterbury scope policy.
+Canterbury includes a default local Docker Compose stack that puts the vault and
+MCP services behind Pomerium Core and uses Dex as a self-contained OpenID
+Connect provider. This is the local precursor to a deployed edge setup:
+Pomerium authenticates the caller, issues its own signed JWT assertion, rewrites
+that assertion into `Authorization: Bearer <jwt>`, and Canterbury validates it
+before applying vault scope policy.
 
 The stack is for development only. Pomerium private keys, the TLS certificate,
 the Dex client secret, and shared secrets are generated locally and must not be
@@ -39,11 +39,22 @@ on other systems.
 
 The default Compose services are:
 
-| Service         | Purpose                           | Local URL                                   |
-| --------------- | --------------------------------- | ------------------------------------------- |
-| `dex`           | Local OIDC provider               | `http://dex.localhost.pomerium.io:5556/dex` |
-| `pomerium`      | Local identity-aware proxy        | `https://vault.localhost.pomerium.io:8443`  |
-| `vault-service` | Canterbury Connect/gRPC vault API | Internal only, proxied by Pomerium          |
+| Service         | Purpose                           | Local URL                                      |
+| --------------- | --------------------------------- | ---------------------------------------------- |
+| `dex`           | Local OIDC provider               | `http://dex.localhost.pomerium.io:5556/dex`    |
+| `pomerium`      | Local identity-aware proxy        | `https://vault.localhost.pomerium.io:8443`     |
+| `vault-service` | Canterbury Connect/gRPC vault API | Internal only, proxied by Pomerium             |
+| `mcp-server`    | Stateless Streamable HTTP MCP API | `https://vault.localhost.pomerium.io:8443/mcp` |
+
+The MCP container does not publish its listener to the host. The `/mcp` route is
+matched before the catch-all vault route and forwards to the internal MCP
+service. Both routes use the same external hostname so Pomerium's assertion
+issuer and audience remain acceptable to the vault service when the MCP server
+forwards the assertion.
+
+The route is an ordinary protected HTTP route, not Pomerium's experimental
+MCP-native OAuth mode. MCP clients must send a bearer credential that the
+existing Pomerium route accepts.
 
 The Pomerium route uses a self-signed local certificate for
 `*.localhost.pomerium.io`. Browsers and command-line tools will warn unless you
@@ -102,13 +113,16 @@ make smoke-pomerium
 
 The smoke test obtains Dex ID tokens with the local password grant, sends those
 tokens to Pomerium, and verifies that Pomerium forwards its own signed assertion
-to the vault service. It checks:
+through both the Connect and MCP routes. It checks:
 
 - `agent@canterbury.local` can read `Projects/Canterbury.md`.
 - `public@canterbury.local` can read `Public/Service Brief.md`.
 - `public@canterbury.local` cannot read `Projects/Canterbury.md`.
 - `unmapped@canterbury.local` is rejected during Canterbury authentication.
 - Requests without a bearer token are rejected by the protected route.
+- `/mcp` lists exactly `read_note` and `search_notes`.
+- MCP read and search calls enforce the same three identities and note scopes.
+- MCP calls produce the underlying mandatory vault read and search audit events.
 
 This smoke test is intentionally not part of `make check` because it requires
 Docker and external image pulls.

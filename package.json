@@ -11,7 +11,7 @@
 		"lint:js": "eslint --config eslint.config.js sync scripts",
 		"lint:go": "PATH=$PWD/.cache/bin:$PATH GOCACHE=${GOCACHE:-$PWD/.cache/go-build} GOMODCACHE=${GOMODCACHE:-$PWD/.cache/go-mod} GOLANGCI_LINT_CACHE=${GOLANGCI_LINT_CACHE:-$PWD/.cache/golangci-lint} golangci-lint run ./cmd/... ./internal/...",
 		"proto:format": "XDG_CACHE_HOME=${XDG_CACHE_HOME:-$PWD/.cache} buf format -w",
-		"proto:generate": "XDG_CACHE_HOME=${XDG_CACHE_HOME:-$PWD/.cache} buf generate",
+		"proto:generate": "XDG_CACHE_HOME=${XDG_CACHE_HOME:-$PWD/.cache} buf generate && npm run format:go",
 		"proto:lint": "XDG_CACHE_HOME=${XDG_CACHE_HOME:-$PWD/.cache} buf lint",
 		"test:go": "GOCACHE=${GOCACHE:-$PWD/.cache/go-build} GOMODCACHE=${GOMODCACHE:-$PWD/.cache/go-mod} go test ./cmd/... ./internal/... ./gen/go/...",
 		"smoke:auth": "node scripts/local-auth-smoke.mts",

@@ -23,6 +23,15 @@ type AuditEvent = {
 	event_type?: unknown
 }
 
+/** JSON-RPC response envelope returned by the MCP endpoint. */
+type MCPResponse = {
+	status: number
+	body: unknown
+}
+
+/** Function used to validate a successful MCP tool result. */
+type MCPResultValidator = (result: Record<string, unknown>) => boolean
+
 const execFileAsync = promisify(execFile)
 const root = dirname(dirname(fileURLToPath(import.meta.url)))
 const localPomeriumDir = join(root, 'deploy', 'local-pomerium')
@@ -201,6 +210,94 @@ const postVault = async (
 	}
 }
 
+/** Verifies that the Pomerium-proxied MCP server exposes only the expected tools. */
+const assertMCPTools = async (token: string) => {
+	// The MCP handler runs in stateless Streamable HTTP mode, so this smoke test
+	// intentionally probes the raw JSON-RPC route without a persisted handshake.
+	const response = await postMCP('tools/list', {}, token)
+	const responseBody = isRecord(response.body) ? response.body : {}
+	if (response.status !== 200 || responseBody.error) {
+		throw new Error(`list MCP tools: HTTP ${response.status} ${JSON.stringify(response.body)}`)
+	}
+
+	const result = isRecord(responseBody.result) ? responseBody.result : {}
+	const tools = Array.isArray(result.tools) ? result.tools : []
+	const names = tools
+		.map(tool => {
+			return isRecord(tool) && typeof tool.name === 'string' ? tool.name : undefined
+		})
+		.filter((name): name is string => name !== undefined)
+		.sort()
+	if (JSON.stringify(names) !== JSON.stringify(['read_note', 'search_notes'])) {
+		throw new Error(`list MCP tools: unexpected names ${JSON.stringify(names)}`)
+	}
+}
+
+/** Verifies that an MCP tool call succeeds and returns the expected structured result. */
+const assertMCPCallSucceeds = async (
+	token: string,
+	name: string,
+	arguments_: unknown,
+	validate: MCPResultValidator,
+) => {
+	const response = await postMCP('tools/call', { name, arguments: arguments_ }, token)
+	const responseBody = isRecord(response.body) ? response.body : {}
+	const result = isRecord(responseBody.result) ? responseBody.result : undefined
+	if (
+		response.status !== 200 ||
+		responseBody.error ||
+		!result ||
+		result.isError ||
+		!validate(result)
+	) {
+		throw new Error(
+			`call MCP tool ${name}: HTTP ${response.status} ${JSON.stringify(response.body)}`,
+		)
+	}
+}
+
+/** Verifies that an MCP tool call returns a tool-level failure. */
+const assertMCPCallFails = async (token: string, name: string, arguments_: unknown) => {
+	const response = await postMCP('tools/call', { name, arguments: arguments_ }, token)
+	const responseBody = isRecord(response.body) ? response.body : {}
+	const result = isRecord(responseBody.result) ? responseBody.result : {}
+	if (response.status !== 200 || responseBody.error || result.isError !== true) {
+		throw new Error(
+			`call denied MCP tool ${name}: HTTP ${response.status} ${JSON.stringify(response.body)}`,
+		)
+	}
+}
+
+/** Posts one JSON-RPC request through Pomerium to the MCP endpoint. */
+const postMCP = async (method: string, params: unknown, token?: string): Promise<MCPResponse> => {
+	const headers: Record<string, string> = {
+		accept: 'application/json, text/event-stream',
+		'content-type': 'application/json',
+		'mcp-protocol-version': '2025-06-18',
+	}
+
+	if (token) {
+		headers.authorization = `Bearer ${token}`
+	}
+
+	const response = await fetch(`${pomeriumBaseURL}/mcp`, {
+		method: 'POST',
+		headers,
+		body: JSON.stringify({
+			jsonrpc: '2.0',
+			id: ++mcpRequestID,
+			method,
+			params,
+		}),
+		redirect: 'manual',
+	})
+
+	return {
+		status: response.status,
+		body: await parseJSON(response),
+	}
+}
+
 /** Builds the request body for VaultService.ReadNote. */
 const readNoteBody = (path: string): ReadNoteBody => {
 	return {
@@ -235,10 +332,15 @@ const waitForHTTP = async (url: string, label: string) => {
 
 /** Waits until the audit log records a new authentication failure event. */
 const waitForAuditFailure = async (previousCount: number) => {
+	return waitForAuditEvent('auth.failed', previousCount)
+}
+
+/** Waits until the audit log records a new event of the requested type. */
+const waitForAuditEvent = async (eventType: string, previousCount: number) => {
 	const deadline = Date.now() + 10_000
 
 	while (Date.now() < deadline) {
-		const currentCount = await countAuthFailures()
+		const currentCount = await countAuditEvents(eventType)
 		if (currentCount > previousCount) {
 			return
 		}
@@ -246,13 +348,18 @@ const waitForAuditFailure = async (previousCount: number) => {
 		await sleep(250)
 	}
 
-	throw new Error('timed out waiting for auth.failed audit event')
+	throw new Error(`timed out waiting for ${eventType} audit event`)
 }
 
 /** Counts auth.failed events across all readable audit log files. */
 const countAuthFailures = async () => {
+	return countAuditEvents('auth.failed')
+}
+
+/** Counts audit events of a specific type across all readable audit log files. */
+const countAuditEvents = async (eventType: string) => {
 	const events = await readAuditEvents()
-	return events.filter(event => event.event_type === 'auth.failed').length
+	return events.filter(event => event.event_type === eventType).length
 }
 
 /** Reads audit events from the host path, falling back to the container for permission issues. */
@@ -362,6 +469,7 @@ const auditRoot = process.env.VAULT_SERVICE_AUDIT_ROOT ?? join(root, 'audit')
 const dexClientID = process.env.DEX_CLIENT_ID ?? 'pomerium'
 const dexClientSecret = process.env.DEX_CLIENT_SECRET
 const testPassword = process.env.DEX_TEST_PASSWORD ?? 'password'
+let mcpRequestID = 0
 
 if (!dexClientSecret) {
 	throw new Error('missing DEX_CLIENT_SECRET; run scripts/setup-local-pomerium.mts first')
@@ -387,6 +495,57 @@ await waitForAuditFailure(authFailuresBefore)
 const missingBearer = await postVault('ReadNote', readNoteBody('Projects/Canterbury.md'))
 if (missingBearer.status >= 200 && missingBearer.status < 300) {
 	throw new Error(`missing bearer request unexpectedly returned HTTP ${missingBearer.status}`)
+}
+
+await assertMCPTools(agentToken)
+
+const readAuditsBefore = await countAuditEvents('vault.read.allowed')
+await assertMCPCallSucceeds(
+	agentToken,
+	'read_note',
+	readNoteBody('Projects/Canterbury.md'),
+	result => {
+		const structuredContent = isRecord(result.structuredContent) ? result.structuredContent : {}
+		const note = isRecord(structuredContent.note) ? structuredContent.note : {}
+		const ref = isRecord(note.ref) ? note.ref : {}
+		return ref.path === 'Projects/Canterbury.md'
+	},
+)
+await waitForAuditEvent('vault.read.allowed', readAuditsBefore)
+
+const searchAuditsBefore = await countAuditEvents('vault.search.completed')
+await assertMCPCallSucceeds(
+	agentToken,
+	'search_notes',
+	{ query: { text: 'Canterbury' }, filter: { includePathPrefixes: ['Projects'] } },
+	result => {
+		const structuredContent = isRecord(result.structuredContent) ? result.structuredContent : {}
+		return Array.isArray(structuredContent.results)
+	},
+)
+await waitForAuditEvent('vault.search.completed', searchAuditsBefore)
+
+await assertMCPCallFails(publicToken, 'read_note', readNoteBody('Projects/Canterbury.md'))
+await assertMCPCallSucceeds(
+	publicToken,
+	'search_notes',
+	{ query: { text: 'Service' }, filter: { includePathPrefixes: ['Public'] } },
+	result => {
+		const structuredContent = isRecord(result.structuredContent) ? result.structuredContent : {}
+		const results = Array.isArray(structuredContent.results) ? structuredContent.results : []
+		const firstResult = isRecord(results[0]) ? results[0] : {}
+		const ref = isRecord(firstResult.ref) ? firstResult.ref : {}
+		return ref.path === 'Public/Service Brief.md'
+	},
+)
+await assertMCPCallFails(unmappedToken, 'read_note', readNoteBody('Projects/Canterbury.md'))
+await assertMCPCallFails(unmappedToken, 'search_notes', { query: { text: 'Canterbury' } })
+
+const missingMCPBearer = await postMCP('tools/list', {})
+if (missingMCPBearer.status >= 200 && missingMCPBearer.status < 300) {
+	throw new Error(
+		`missing MCP bearer request unexpectedly returned HTTP ${missingMCPBearer.status}`,
+	)
 }
 
 console.log('local Pomerium smoke passed')

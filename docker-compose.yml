@@ -61,6 +61,20 @@ services:
       - ./audit:/audit
       - ./deploy/local-pomerium/.generated/certs/pomerium-local.crt:/pomerium-ca/pomerium-local.crt:ro
 
+  mcp-server:
+    build:
+      context: .
+      dockerfile: Dockerfile.mcp-server
+    image: canterbury-mcp-server:latest
+    container_name: canterbury-mcp-server
+    restart: on-failure
+    depends_on:
+      - vault-service
+    environment:
+      MCP_SERVER_ADDR: 0.0.0.0:50053
+      MCP_SERVER_VAULT_BASE_URL: http://vault-service:50051
+      MCP_SERVER_VAULT_REQUEST_TIMEOUT: 10s
+
   obsidian-sync:
     profiles: ['sync']
     build:
