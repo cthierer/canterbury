@@ -212,6 +212,8 @@ const postVault = async (
 
 /** Verifies that the Pomerium-proxied MCP server exposes only the expected tools. */
 const assertMCPTools = async (token: string) => {
+	// The MCP handler runs in stateless Streamable HTTP mode, so this smoke test
+	// intentionally probes the raw JSON-RPC route without a persisted handshake.
 	const response = await postMCP('tools/list', {}, token)
 	const responseBody = isRecord(response.body) ? response.body : {}
 	if (response.status !== 200 || responseBody.error) {
