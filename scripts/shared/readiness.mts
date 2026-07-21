@@ -1,9 +1,11 @@
 import { createConnection } from 'node:net'
 import { sleep } from './processes.mts'
+import { getErrorMessage } from './errors.mts'
 
-/** Returns a useful message for unknown caught values. */
-const getErrorMessage = (error: unknown) => {
-	return error instanceof Error ? error.message : String(error)
+export interface ReadinessOptions {
+	readonly timeoutMillis?: number
+	readonly intervalMillis?: number
+	readonly requestTimeoutMillis?: number
 }
 
 /** Attempts one short-lived TCP connection for readiness probing. */
@@ -33,13 +35,21 @@ const splitHostPort = (address: string) => {
 }
 
 /** Polls an HTTP endpoint until it returns a successful status or the deadline expires. */
-export const waitForHTTP = async (url: string, label: string) => {
-	const deadline = Date.now() + 20_000
+export const waitForHTTP = async (
+	url: string,
+	label: string,
+	{
+		timeoutMillis = 20_000,
+		intervalMillis = 250,
+		requestTimeoutMillis = 500,
+	}: ReadinessOptions = {},
+) => {
+	const deadline = Date.now() + timeoutMillis
 	let lastError: unknown
 
 	while (Date.now() < deadline) {
 		try {
-			const response = await fetch(url, { signal: AbortSignal.timeout(500) })
+			const response = await fetch(url, { signal: AbortSignal.timeout(requestTimeoutMillis) })
 			if (response.ok) {
 				return
 			}
@@ -49,17 +59,21 @@ export const waitForHTTP = async (url: string, label: string) => {
 			lastError = error
 		}
 
-		await sleep(250)
+		await sleep(intervalMillis)
 	}
 
 	throw new Error(`timed out waiting for ${label}: ${getErrorMessage(lastError ?? 'no response')}`)
 }
 
 /** Polls a host:port listener until a TCP connection succeeds or the deadline expires. */
-export const waitForTCP = async (address: string, label: string) => {
+export const waitForTCP = async (
+	address: string,
+	label: string,
+	{ timeoutMillis = 20_000, intervalMillis = 250 }: ReadinessOptions = {},
+) => {
 	const [host, portString] = splitHostPort(address)
 	const port = Number(portString)
-	const deadline = Date.now() + 20_000
+	const deadline = Date.now() + timeoutMillis
 	let lastError: unknown
 
 	while (Date.now() < deadline) {
@@ -70,7 +84,7 @@ export const waitForTCP = async (address: string, label: string) => {
 			lastError = error
 		}
 
-		await sleep(250)
+		await sleep(intervalMillis)
 	}
 
 	throw new Error(`timed out waiting for ${label}: ${getErrorMessage(lastError ?? 'no listener')}`)

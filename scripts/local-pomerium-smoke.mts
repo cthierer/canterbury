@@ -1,87 +1,32 @@
 import { existsSync } from 'node:fs'
-import { readFile, readdir } from 'node:fs/promises'
 import { execFile, spawnSync } from 'node:child_process'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 import { promisify } from 'node:util'
-import { fileURLToPath } from 'node:url'
-
-/** Minimal Connect JSON request body for VaultService.ReadNote. */
-type ReadNoteBody = {
-	ref: {
-		path: string
-	}
-}
-
-/** Parsed response envelope returned by the Pomerium-proxied vault endpoint. */
-type VaultResponse = {
-	status: number
-	body: unknown
-}
-
-/** Audit event shape used by this smoke test. */
-type AuditEvent = {
-	event_type?: unknown
-}
-
-/** JSON-RPC response envelope returned by the MCP endpoint. */
-type MCPResponse = {
-	status: number
-	body: unknown
-}
+import {
+	parseJSONLines,
+	readHostAuditEvents,
+	countAuditEvents as countEvents,
+	type AuditEvent,
+} from './shared/audit.mts'
+import { hasErrorCode, isRecord } from './shared/errors.mts'
+import { loadEnvFile } from './shared/env.mts'
+import { parseJSON, type HTTPResponse } from './shared/http.mts'
+import { MCPClient } from './shared/mcpClient.mts'
+import { localPomeriumDir, repoRoot } from './shared/paths.mts'
+import { sleep } from './shared/processes.mts'
+import { waitForHTTP } from './shared/readiness.mts'
+import { postVault as postVaultRequest, readNoteBody } from './shared/vaultClient.mts'
 
 /** Function used to validate a successful MCP tool result. */
 type MCPResultValidator = (result: Record<string, unknown>) => boolean
 
 const execFileAsync = promisify(execFile)
-const root = dirname(dirname(fileURLToPath(import.meta.url)))
-const localPomeriumDir = join(root, 'deploy', 'local-pomerium')
-
-/** Checks Node-style thrown values for a specific filesystem or process error code. */
-const hasErrorCode = (error: unknown, code: string) => {
-	return (
-		typeof error === 'object' &&
-		error !== null &&
-		'code' in error &&
-		(error as { code?: unknown }).code === code
-	)
-}
-
-/** Returns a useful message for unknown caught values. */
-const getErrorMessage = (error: unknown) => {
-	return error instanceof Error ? error.message : String(error)
-}
-
-/** Narrows parsed JSON to an object before reading nested response fields. */
-const isRecord = (value: unknown): value is Record<string, unknown> => {
-	return typeof value === 'object' && value !== null
-}
-
-/** Loads local.env values only when the caller has not already provided them. */
-const loadLocalEnv = async (path: string) => {
-	let data
-	try {
-		data = await readFile(path, 'utf8')
-	} catch (error) {
-		if (hasErrorCode(error, 'ENOENT')) {
-			return
-		}
-
-		throw error
-	}
-
-	for (const line of data.split('\n')) {
-		const trimmed = line.trim()
-		if (trimmed === '' || trimmed.startsWith('#')) {
-			continue
-		}
-
-		const match = /^([A-Za-z_][A-Za-z0-9_]*)=(.*)$/.exec(trimmed)
-		if (!match || process.env[match[1]] !== undefined) {
-			continue
-		}
-
-		process.env[match[1]] = match[2]
-	}
+const root = repoRoot()
+const pomeriumDir = localPomeriumDir()
+const readinessOptions = {
+	timeoutMillis: 30_000,
+	intervalMillis: 500,
+	requestTimeoutMillis: 1000,
 }
 
 /** Restarts the script with the generated Pomerium CA when HTTPS verification needs it. */
@@ -184,31 +129,8 @@ const assertReadDenied = async (token: string, path: string, status: number, cod
 }
 
 /** Posts a Connect JSON request through Pomerium to the vault service. */
-const postVault = async (
-	method: string,
-	body: ReadNoteBody,
-	token?: string,
-): Promise<VaultResponse> => {
-	const headers: Record<string, string> = {
-		'content-type': 'application/json',
-	}
-
-	if (token) {
-		headers.authorization = `Bearer ${token}`
-	}
-
-	const response = await fetch(`${pomeriumBaseURL}/canterbury.vault.v1.VaultService/${method}`, {
-		method: 'POST',
-		headers,
-		body: JSON.stringify(body),
-		redirect: 'manual',
-	})
-
-	return {
-		status: response.status,
-		body: await parseJSON(response),
-	}
-}
+const postVault = async (method: string, body: unknown, token?: string) =>
+	postVaultRequest(pomeriumBaseURL, method, body, token)
 
 /** Verifies that the Pomerium-proxied MCP server exposes only the expected tools. */
 const assertMCPTools = async (token: string) => {
@@ -269,65 +191,8 @@ const assertMCPCallFails = async (token: string, name: string, arguments_: unkno
 }
 
 /** Posts one JSON-RPC request through Pomerium to the MCP endpoint. */
-const postMCP = async (method: string, params: unknown, token?: string): Promise<MCPResponse> => {
-	const headers: Record<string, string> = {
-		accept: 'application/json, text/event-stream',
-		'content-type': 'application/json',
-		'mcp-protocol-version': '2025-06-18',
-	}
-
-	if (token) {
-		headers.authorization = `Bearer ${token}`
-	}
-
-	const response = await fetch(`${pomeriumBaseURL}/mcp`, {
-		method: 'POST',
-		headers,
-		body: JSON.stringify({
-			jsonrpc: '2.0',
-			id: ++mcpRequestID,
-			method,
-			params,
-		}),
-		redirect: 'manual',
-	})
-
-	return {
-		status: response.status,
-		body: await parseJSON(response),
-	}
-}
-
-/** Builds the request body for VaultService.ReadNote. */
-const readNoteBody = (path: string): ReadNoteBody => {
-	return {
-		ref: {
-			path,
-		},
-	}
-}
-
-/** Polls an HTTP endpoint until it returns a successful status or the deadline expires. */
-const waitForHTTP = async (url: string, label: string) => {
-	const deadline = Date.now() + 30_000
-	let lastError: unknown
-
-	while (Date.now() < deadline) {
-		try {
-			const response = await fetch(url, { signal: AbortSignal.timeout(1000) })
-			if (response.ok) {
-				return
-			}
-
-			lastError = new Error(`${label} returned HTTP ${response.status}`)
-		} catch (error) {
-			lastError = error
-		}
-
-		await sleep(500)
-	}
-
-	throw new Error(`timed out waiting for ${label}: ${getErrorMessage(lastError ?? 'no response')}`)
+const postMCP = async (method: string, params: unknown, token?: string): Promise<HTTPResponse> => {
+	return mcpClient.post(method, params, token)
 }
 
 /** Waits until the audit log records a new authentication failure event. */
@@ -359,7 +224,7 @@ const countAuthFailures = async () => {
 /** Counts audit events of a specific type across all readable audit log files. */
 const countAuditEvents = async (eventType: string) => {
 	const events = await readAuditEvents()
-	return events.filter(event => event.event_type === eventType).length
+	return countEvents(events, eventType)
 }
 
 /** Reads audit events from the host path, falling back to the container for permission issues. */
@@ -373,35 +238,6 @@ const readAuditEvents = async (): Promise<AuditEvent[]> => {
 
 		return readContainerAuditEvents()
 	}
-}
-
-/** Recursively reads JSONL audit events from the host filesystem. */
-const readHostAuditEvents = async (directory: string): Promise<AuditEvent[]> => {
-	let entries
-	try {
-		entries = await readdir(directory, { withFileTypes: true })
-	} catch (error) {
-		if (hasErrorCode(error, 'ENOENT')) {
-			return []
-		}
-
-		throw error
-	}
-
-	const events: AuditEvent[] = []
-	for (const entry of entries) {
-		const path = join(directory, entry.name)
-		if (entry.isDirectory()) {
-			events.push(...(await readHostAuditEvents(path)))
-			continue
-		}
-
-		if (entry.isFile() && entry.name.endsWith('.jsonl')) {
-			events.push(...parseJSONLines(await readFile(path, 'utf8')))
-		}
-	}
-
-	return events
 }
 
 /** Reads JSONL audit events from the running vault-service container. */
@@ -423,53 +259,17 @@ const readContainerAuditEvents = async (): Promise<AuditEvent[]> => {
 	return parseJSONLines(stdout)
 }
 
-/** Parses newline-delimited JSON audit events, ignoring empty lines. */
-const parseJSONLines = (data: string): AuditEvent[] => {
-	const events: AuditEvent[] = []
-	for (const line of data.split('\n')) {
-		if (line.trim() === '') {
-			continue
-		}
-
-		events.push(JSON.parse(line) as AuditEvent)
-	}
-
-	return events
-}
-
-/** Parses a response body as JSON, preserving raw text for non-JSON error bodies. */
-const parseJSON = async (response: Response): Promise<unknown> => {
-	const text = await response.text()
-	if (text.trim() === '') {
-		return null
-	}
-
-	try {
-		return JSON.parse(text)
-	} catch {
-		return { raw: text }
-	}
-}
-
-/** Waits for a small polling interval. */
-const sleep = (ms: number) => {
-	return new Promise<void>(resolve => {
-		setTimeout(resolve, ms)
-	})
-}
-
-await loadLocalEnv(join(localPomeriumDir, 'local.env'))
+await loadEnvFile(join(pomeriumDir, 'local.env'))
 
 const dexBaseURL = process.env.DEX_BASE_URL ?? 'http://127.0.0.1:5556/dex'
 const pomeriumBaseURL = process.env.POMERIUM_BASE_URL ?? 'https://vault.localhost.pomerium.io:8443'
 const pomeriumCACert =
-	process.env.POMERIUM_CA_CERT ??
-	join(localPomeriumDir, '.generated', 'certs', 'pomerium-local.crt')
+	process.env.POMERIUM_CA_CERT ?? join(pomeriumDir, '.generated', 'certs', 'pomerium-local.crt')
 const auditRoot = process.env.VAULT_SERVICE_AUDIT_ROOT ?? join(root, 'audit')
 const dexClientID = process.env.DEX_CLIENT_ID ?? 'pomerium'
 const dexClientSecret = process.env.DEX_CLIENT_SECRET
 const testPassword = process.env.DEX_TEST_PASSWORD ?? 'password'
-let mcpRequestID = 0
+const mcpClient = new MCPClient(pomeriumBaseURL)
 
 if (!dexClientSecret) {
 	throw new Error('missing DEX_CLIENT_SECRET; run scripts/setup-local-pomerium.mts first')
@@ -477,8 +277,16 @@ if (!dexClientSecret) {
 
 ensurePomeriumCACert()
 
-await waitForHTTP(`${dexBaseURL}/.well-known/openid-configuration`, 'Dex discovery')
-await waitForHTTP(`${pomeriumBaseURL}/.well-known/pomerium/jwks.json`, 'Pomerium JWKS')
+await waitForHTTP(
+	`${dexBaseURL}/.well-known/openid-configuration`,
+	'Dex discovery',
+	readinessOptions,
+)
+await waitForHTTP(
+	`${pomeriumBaseURL}/.well-known/pomerium/jwks.json`,
+	'Pomerium JWKS',
+	readinessOptions,
+)
 
 const agentToken = await mintIDToken('agent@canterbury.local')
 const publicToken = await mintIDToken('public@canterbury.local')

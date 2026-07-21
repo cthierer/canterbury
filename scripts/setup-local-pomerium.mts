@@ -3,15 +3,12 @@ import { randomBytes } from 'node:crypto'
 import { chmod, mkdir, readFile, rename, unlink, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
-import { dirname, join } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { join } from 'node:path'
+import { readEnvFile, type EnvValues } from './shared/env.mts'
+import { localPomeriumDir, repoRoot } from './shared/paths.mts'
 
-/** Environment-file values parsed from KEY=value lines. */
-type EnvValues = Record<string, string>
-
-const scriptDir = dirname(fileURLToPath(import.meta.url))
-const rootDir = dirname(scriptDir)
-const localDir = join(rootDir, 'deploy', 'local-pomerium')
+const rootDir = repoRoot()
+const localDir = localPomeriumDir()
 const generatedDir = join(localDir, '.generated')
 const envFile = join(localDir, 'local.env')
 const auditDir = join(rootDir, 'audit')
@@ -42,54 +39,6 @@ const composeUserEnv = () => {
 	}
 
 	return 'CANTERBURY_UID=$(id -u) CANTERBURY_GID=$(id -g)'
-}
-
-/** Checks Node-style thrown values for a specific filesystem or process error code. */
-const hasErrorCode = (error: unknown, code: string) => {
-	return (
-		typeof error === 'object' &&
-		error !== null &&
-		'code' in error &&
-		(error as { code?: unknown }).code === code
-	)
-}
-
-/** Returns a useful message for unknown caught values. */
-const getErrorMessage = (error: unknown) => {
-	return error instanceof Error ? error.message : String(error)
-}
-
-/** Reads an optional local.env file without overwriting missing files as errors. */
-const readEnvFile = async (path: string): Promise<EnvValues> => {
-	let data
-	try {
-		data = await readFile(path, 'utf8')
-	} catch (error) {
-		if (hasErrorCode(error, 'ENOENT')) {
-			return {}
-		}
-
-		throw new Error(`Failed to read local environment file at ${path}: ${getErrorMessage(error)}`, {
-			cause: error,
-		})
-	}
-
-	const values: EnvValues = {}
-	for (const line of data.split('\n')) {
-		const trimmed = line.trim()
-		if (trimmed === '' || trimmed.startsWith('#')) {
-			continue
-		}
-
-		const separator = trimmed.indexOf('=')
-		if (separator === -1) {
-			continue
-		}
-
-		values[trimmed.slice(0, separator)] = trimmed.slice(separator + 1)
-	}
-
-	return values
 }
 
 /** Renders a generated config file by replacing explicit template placeholders. */
