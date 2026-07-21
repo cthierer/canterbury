@@ -19,6 +19,13 @@ headers {
   mcp-protocol-version: 2025-06-18
 }
 
+settings {
+  encodeUrl: true
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+}
+
 body:json {
   {
     "jsonrpc": "2.0",

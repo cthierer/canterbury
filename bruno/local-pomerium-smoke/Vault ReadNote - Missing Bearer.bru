@@ -17,6 +17,13 @@ headers {
   content-type: application/json
 }
 
+settings {
+  encodeUrl: true
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+}
+
 body:json {
   {
     "ref": {
