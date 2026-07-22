@@ -1,0 +1,41 @@
+meta {
+  name: Vault ReadNote - Missing Bearer
+  type: http
+  seq: 13
+  tags: [
+    pomerium-vault-auth
+  ]
+}
+
+post {
+  url: {{PomeriumBaseURI}}/canterbury.vault.v1.VaultService/ReadNote
+  body: json
+  auth: none
+}
+
+headers {
+  content-type: application/json
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+}
+
+body:json {
+  {
+    "ref": {
+      "path": "Projects/Canterbury.md"
+    }
+  }
+}
+
+tests {
+  const status = typeof res.getStatus === 'function' ? res.getStatus() : res.status;
+
+  test('rejects missing bearer assertion', function () {
+    expect(status).to.be.at.least(300);
+  });
+}

@@ -1,0 +1,48 @@
+meta {
+  name: MCP ReadNote - Unmapped Denied
+  type: http
+  seq: 62
+  tags: [
+    pomerium-mcp-authz
+  ]
+}
+
+post {
+  url: {{PomeriumBaseURI}}/mcp
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json, text/event-stream
+  content-type: application/json
+  mcp-protocol-version: 2025-06-18
+  authorization: Bearer {{UnmappedToken}}
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 4,
+    "method": "tools/call",
+    "params": {
+      "name": "read_note",
+      "arguments": {
+        "ref": {
+          "path": "Projects/Canterbury.md"
+        }
+      }
+    }
+  }
+}
+
+tests {
+  const status = typeof res.getStatus === 'function' ? res.getStatus() : res.status;
+  const body = typeof res.getBody === 'function' ? res.getBody() : res.body;
+
+  test('unmapped read_note returns tool error', function () {
+    expect(status).to.equal(200);
+    expect(body.error).to.equal(undefined);
+    expect(body.result.isError).to.equal(true);
+  });
+}

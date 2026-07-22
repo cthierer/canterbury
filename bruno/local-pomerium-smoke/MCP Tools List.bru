@@ -1,0 +1,42 @@
+meta {
+  name: MCP Tools List
+  type: http
+  seq: 30
+  tags: [
+    pomerium-mcp-authz
+  ]
+}
+
+post {
+  url: {{PomeriumBaseURI}}/mcp
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json, text/event-stream
+  content-type: application/json
+  mcp-protocol-version: 2025-06-18
+  authorization: Bearer {{AgentToken}}
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/list",
+    "params": {}
+  }
+}
+
+tests {
+  const status = typeof res.getStatus === 'function' ? res.getStatus() : res.status;
+  const body = typeof res.getBody === 'function' ? res.getBody() : res.body;
+
+  test('lists expected MCP tools', function () {
+    const names = body.result.tools.map(tool => tool.name).sort();
+    expect(status).to.equal(200);
+    expect(body.error).to.equal(undefined);
+    expect(names).to.deep.equal(['read_note', 'search_notes']);
+  });
+}

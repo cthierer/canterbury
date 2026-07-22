@@ -1,0 +1,44 @@
+meta {
+  name: MCP Tools List - Missing Bearer
+  type: http
+  seq: 64
+  tags: [
+    pomerium-mcp-authz
+  ]
+}
+
+post {
+  url: {{PomeriumBaseURI}}/mcp
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json, text/event-stream
+  content-type: application/json
+  mcp-protocol-version: 2025-06-18
+}
+
+settings {
+  encodeUrl: true
+  timeout: 0
+  followRedirects: false
+  maxRedirects: 5
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 6,
+    "method": "tools/list",
+    "params": {}
+  }
+}
+
+tests {
+  const status = typeof res.getStatus === 'function' ? res.getStatus() : res.status;
+
+  test('rejects missing MCP bearer assertion', function () {
+    expect(status).to.be.at.least(300);
+  });
+}

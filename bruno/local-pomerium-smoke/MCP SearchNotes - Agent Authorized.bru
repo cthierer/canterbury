@@ -1,0 +1,52 @@
+meta {
+  name: MCP SearchNotes - Agent Authorized
+  type: http
+  seq: 50
+  tags: [
+    pomerium-mcp-search-audit
+  ]
+}
+
+post {
+  url: {{PomeriumBaseURI}}/mcp
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json, text/event-stream
+  content-type: application/json
+  mcp-protocol-version: 2025-06-18
+  authorization: Bearer {{AgentToken}}
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 1,
+    "method": "tools/call",
+    "params": {
+      "name": "search_notes",
+      "arguments": {
+        "query": {
+          "text": "Canterbury"
+        },
+        "filter": {
+          "includePathPrefixes": ["Projects"]
+        }
+      }
+    }
+  }
+}
+
+tests {
+  const status = typeof res.getStatus === 'function' ? res.getStatus() : res.status;
+  const body = typeof res.getBody === 'function' ? res.getBody() : res.body;
+
+  test('search_notes returns structured results', function () {
+    expect(status).to.equal(200);
+    expect(body.error).to.equal(undefined);
+    expect(body.result.isError).to.not.equal(true);
+    expect(body.result.structuredContent.results).to.be.an('array');
+  });
+}

@@ -1,0 +1,53 @@
+meta {
+  name: MCP SearchNotes - Public Authorized
+  type: http
+  seq: 61
+  tags: [
+    pomerium-mcp-authz
+  ]
+}
+
+post {
+  url: {{PomeriumBaseURI}}/mcp
+  body: json
+  auth: none
+}
+
+headers {
+  accept: application/json, text/event-stream
+  content-type: application/json
+  mcp-protocol-version: 2025-06-18
+  authorization: Bearer {{PublicToken}}
+}
+
+body:json {
+  {
+    "jsonrpc": "2.0",
+    "id": 3,
+    "method": "tools/call",
+    "params": {
+      "name": "search_notes",
+      "arguments": {
+        "query": {
+          "text": "Service"
+        },
+        "filter": {
+          "includePathPrefixes": ["Public"]
+        }
+      }
+    }
+  }
+}
+
+tests {
+  const status = typeof res.getStatus === 'function' ? res.getStatus() : res.status;
+  const body = typeof res.getBody === 'function' ? res.getBody() : res.body;
+
+  test('public search_notes returns public note', function () {
+    const firstResult = body.result.structuredContent.results[0];
+    expect(status).to.equal(200);
+    expect(body.error).to.equal(undefined);
+    expect(body.result.isError).to.not.equal(true);
+    expect(firstResult.ref.path).to.equal('Public/Service Brief.md');
+  });
+}
