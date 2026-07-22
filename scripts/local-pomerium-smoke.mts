@@ -55,7 +55,6 @@ const brunoOptions = {
 		DexBaseURI: dexBaseURL,
 		PomeriumBaseURI: pomeriumBaseURL,
 		DexClientID: dexClientID,
-		DexClientSecret: dexClientSecret ?? '',
 		DexTestPassword: testPassword,
 	},
 	noProxy: '127.0.0.1,localhost,.localhost.pomerium.io,localhost.pomerium.io',
