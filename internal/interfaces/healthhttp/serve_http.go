@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+
+	"github.com/cthierer/canterbury/internal/domain/health"
 )
 
 // ServeHTTP returns the resolved health status for GET and HEAD requests.
@@ -18,7 +20,7 @@ func (service *healthServiceHandler) ServeHTTP(res http.ResponseWriter, req *htt
 	}
 
 	ctx := req.Context()
-	health, err := service.getStatus(ctx)
+	status, response, err := service.getHealth(ctx)
 	if err != nil {
 		status, message := classifyHTTPError(err)
 		logHTTPError(ctx, "getting status", err, status)
@@ -26,7 +28,7 @@ func (service *healthServiceHandler) ServeHTTP(res http.ResponseWriter, req *htt
 		return
 	}
 
-	respJSON, err := json.Marshal(health)
+	respJSON, err := json.Marshal(response)
 	if err != nil {
 		slog.ErrorContext(ctx, "marshaling status", "err", err)
 		http.Error(res, "internal server error", http.StatusInternalServerError)
@@ -37,8 +39,8 @@ func (service *healthServiceHandler) ServeHTTP(res http.ResponseWriter, req *htt
 	res.Header().Set("Cache-Control", "no-store")
 	res.Header().Set("Content-Length", strconv.Itoa(len(respJSON)))
 
-	switch health.Status {
-	case statusServing:
+	switch status {
+	case health.StatusServing:
 		res.WriteHeader(http.StatusOK)
 	default:
 		res.WriteHeader(http.StatusServiceUnavailable)

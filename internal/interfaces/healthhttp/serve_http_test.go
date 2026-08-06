@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/cthierer/canterbury/internal/domain/health"
+	"github.com/cthierer/canterbury/internal/protocol/healthhttp"
 )
 
 func TestNewHealthServiceHandlerValidatesApplication(t *testing.T) {
@@ -24,12 +25,12 @@ func TestServeHTTPReturnsResolvedStatus(t *testing.T) {
 		name       string
 		status     health.Status
 		wantCode   int
-		wantStatus statusValue
+		wantStatus string
 	}{
-		{name: "serving", status: health.StatusServing, wantCode: http.StatusOK, wantStatus: statusServing},
-		{name: "not serving", status: health.StatusNotServing, wantCode: http.StatusServiceUnavailable, wantStatus: statusNotServing},
-		{name: "unknown", status: health.StatusUnknown, wantCode: http.StatusServiceUnavailable, wantStatus: statusUnknown},
-		{name: "invalid", status: health.Status(99), wantCode: http.StatusServiceUnavailable, wantStatus: statusUnknown},
+		{name: "serving", status: health.StatusServing, wantCode: http.StatusOK, wantStatus: healthhttp.StatusServing},
+		{name: "not serving", status: health.StatusNotServing, wantCode: http.StatusServiceUnavailable, wantStatus: healthhttp.StatusNotServing},
+		{name: "unknown", status: health.StatusUnknown, wantCode: http.StatusServiceUnavailable, wantStatus: healthhttp.StatusUnknown},
+		{name: "invalid", status: health.Status(99), wantCode: http.StatusServiceUnavailable, wantStatus: healthhttp.StatusUnknown},
 	}
 
 	for _, test := range tests {
@@ -50,7 +51,7 @@ func TestServeHTTPReturnsResolvedStatus(t *testing.T) {
 				t.Fatalf("cache control = %q, want %q", got, "no-store")
 			}
 
-			var got status
+			var got healthhttp.HealthResponse
 			if err := json.Unmarshal(rec.Body.Bytes(), &got); err != nil {
 				t.Fatalf("unmarshal response: %v", err)
 			}
