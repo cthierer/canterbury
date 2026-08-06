@@ -29,6 +29,12 @@ func (r *Recorder) Record(ctx context.Context, event audit.Event) error {
 		return fmt.Errorf("append event to file: %w", err)
 	}
 
+	err = file.Sync()
+	if err != nil {
+		_ = file.Close()
+		return fmt.Errorf("sync audit log file: %w", err)
+	}
+
 	err = file.Close()
 	if err != nil {
 		return fmt.Errorf("close audit log file: %w", err)
