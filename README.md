@@ -495,11 +495,26 @@ curl --fail-with-body http://127.0.0.1:50053/health/live
 curl --fail-with-body http://127.0.0.1:50053/health/ready
 ```
 
+The included liveness command is useful for local scripts and container probes:
+
+```bash
+go run ./cmd/mcp-server healthcheck
+go run ./cmd/mcp-server healthcheck --url http://mcp-server:50053/health/live --timeout 5s
+```
+
+It exits successfully only when its target returns `SERVING`. By default, it
+checks `http://<MCP_SERVER_ADDR>/health/live`. Set a complete endpoint URL when
+the probe must use a different listener, scheme, or path; the command does not
+append a health path to that override. Configuration loads from `.env`, then
+the environment, and command flags take precedence over both.
+
 | Variable                           | Default                  | Purpose                                   |
 | ---------------------------------- | ------------------------ | ----------------------------------------- |
 | `MCP_SERVER_ADDR`                  | `127.0.0.1:50053`        | MCP HTTP listen address.                  |
 | `MCP_SERVER_VAULT_BASE_URL`        | `http://127.0.0.1:50051` | Internal Connect vault service base URL.  |
 | `MCP_SERVER_VAULT_REQUEST_TIMEOUT` | `10s`                    | Positive timeout for each downstream RPC. |
+| `MCP_SERVER_HEALTHCHECK_URL`       | Derived from server addr | Complete liveness endpoint for the CLI.   |
+| `MCP_SERVER_HEALTHCHECK_TIMEOUT`   | `2s`                     | Positive timeout for the CLI operation.   |
 
 The public Compose deployment does not publish the MCP container port. Pomerium
 routes only `/mcp` to the MCP server before the catch-all vault route; it does

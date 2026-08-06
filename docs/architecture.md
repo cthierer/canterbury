@@ -229,5 +229,7 @@ the local MCP lifecycle state; readiness aggregates that state with vault
 Connect/gRPC health. `cmd/mcp-server` owns HTTP routing, configuration, client
 construction, and lifecycle orchestration. This keeps the MCP process away from
 vault files and preserves the vault service's authentication, authorization,
-and mandatory audit boundary. A future `internal/interfaces/rest` should
+and mandatory audit boundary. `internal/protocol/healthhttp` owns the small
+JSON response contract shared by the health client and server adapters, while
+neither adapter depends on the other. A future `internal/interfaces/rest` should
 likewise expose protocol adapters only rather than reading vault files directly.
