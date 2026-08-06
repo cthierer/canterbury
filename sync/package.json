@@ -6,7 +6,8 @@
 	"scripts": {
 		"lint": "npm --prefix .. run lint:js",
 		"lint:fix": "npm --prefix .. run lint:js -- --fix",
-		"check:code": "node --check sync.js && npm run lint",
+		"test": "node --test *.test.js",
+		"check:code": "node --check sync.js && node --check worker.js && node --check health.js && npm test && npm run lint",
 		"check": "npm run check:code && npm --prefix .. run format:check"
 	},
 	"author": "",
@@ -14,7 +15,7 @@
 	"description": "",
 	"dependencies": {
 		"dotenv": "^17.4.2",
-		"obsidian-headless": "^0.0.8"
+		"obsidian-headless": "0.0.13"
 	},
 	"devDependencies": {
 		"@eslint/js": "^10.0.0",

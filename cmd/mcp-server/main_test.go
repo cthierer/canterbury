@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"errors"
 	"flag"
 	"net/http"
@@ -14,6 +15,19 @@ import (
 
 	"github.com/cthierer/canterbury/internal/interfaces/healthcli"
 )
+
+func TestServeStopsWhenContextIsCanceled(t *testing.T) {
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	cfg := serveConfig{Addr: "127.0.0.1:0"}
+	cfg.Vault.BaseURL = "http://127.0.0.1:1"
+	cfg.Vault.RequestTimeout = time.Second
+
+	if err := serve(ctx, cfg); err != nil {
+		t.Fatalf("serve() canceled error = %v", err)
+	}
+}
 
 func TestLoadServeConfigDefaultsAndOverrides(t *testing.T) {
 	for _, name := range []string{

@@ -228,6 +228,52 @@ This is the portable default. If you replace it with a host bind mount such as
 `./vault:/vault`, you must ensure the container user can write to that host
 directory.
 
+### Sync Worker Readiness And Lifecycle
+
+The sync worker deliberately separates startup progress from readiness. It
+validates its environment, writes the Obsidian token to its private config
+file, configures the vault when needed, and runs a one-time `ob sync`. Only
+after that initial sync succeeds does it start `ob sync --continuous` and
+report ready.
+
+The image includes its own credential-free probe:
+
+```bash
+docker compose --profile sync exec obsidian-sync /app/sync.js healthcheck
+docker compose --profile sync exec obsidian-sync /app/sync.js healthcheck --mode live
+```
+
+The command defaults to `--mode ready`. A successful command prints only
+`READY` or `LIVE` and exits with status `0`; an unsuccessful command prints
+`NOT_READY` or `NOT_LIVE` and exits with status `1`.
+
+| Mode    | Contract                                                                                                                                                           |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `live`  | The supervisor heartbeat is fresh, shutdown has not begun, and the active `ob` child is alive when a child command is running.                                     |
+| `ready` | Liveness is satisfied, the one-time initial sync completed successfully, and the continuously syncing `ob` child is alive. This is the image's Docker healthcheck. |
+
+The worker writes only its lifecycle phase, worker and child process IDs,
+initial-sync completion, heartbeat timestamp, version, and revision to
+`/run/canterbury-sync/health.json`. The file is mode `0600`, is outside the
+vault, and is replaced atomically. Health checks never invoke `ob`, read notes,
+write the vault or audit log, or put credentials in command arguments.
+
+Readiness does not prove that the current upstream WebSocket is connected after
+startup. `obsidian-headless` does not expose a reliable ongoing connectivity
+probe. A stalled Canterbury heartbeat or exited continuous child makes the
+container unhealthy; transient upstream failures that the child handles
+internally remain visible only in container logs.
+
+On SIGTERM or SIGINT, the worker first reports not ready and forwards the
+signal to `ob`. It allows 20 seconds for cleanup, then sends SIGKILL if the
+upstream child has not exited. Compose grants the sync container 30 seconds to
+stop. The MCP and vault services retain their 10-second application shutdown
+deadlines and receive 15-second Compose stop grace periods.
+
+All three services log non-sensitive build version and revision values at
+startup. Image builds accept `CANTERBURY_VERSION` and `CANTERBURY_REVISION`
+build arguments; local builds default to `dev` and `unknown`.
+
 ## Run The Local Pomerium Stack
 
 The default Docker Compose stack starts a local deployed-style auth path:

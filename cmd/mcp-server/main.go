@@ -33,15 +33,18 @@ import (
 
 const (
 	serverName           = "canterbury-vault"
-	serverVersion        = "dev"
 	readHeaderTimeout    = 5 * time.Second
 	idleTimeout          = 60 * time.Second
 	shutdownGracePeriod  = 10 * time.Second
-	serverUserAgent      = "canterbury-mcp-server/" + serverVersion
 	mcpPath              = "/mcp"
 	healthPath           = "/health"
 	defaultMCPServerAddr = "127.0.0.1:50053"
 	defaultHealthTimeout = 2 * time.Second
+)
+
+var (
+	buildVersion  = "dev"
+	buildRevision = "unknown"
 )
 
 type serveConfig struct {
@@ -109,9 +112,9 @@ func serve(ctx context.Context, cfg serveConfig) error {
 	vaultClient := vaultv1connect.NewVaultServiceClient(
 		httpClient,
 		cfg.Vault.BaseURL,
-		connect.WithInterceptors(mcphttp.NewForwardMetadataInterceptor(serverUserAgent)),
+		connect.WithInterceptors(mcphttp.NewForwardMetadataInterceptor("canterbury-mcp-server/"+buildVersion)),
 	)
-	mcpHandler := mcphttp.NewHandler(vaultClient, serverName, serverVersion)
+	mcpHandler := mcphttp.NewHandler(vaultClient, serverName, buildVersion)
 
 	vaultHealth := grpchealth.NewClient(
 		httpClient,
@@ -157,7 +160,14 @@ func serve(ctx context.Context, cfg serveConfig) error {
 
 	errs := make(chan error, 1)
 	go func() {
-		slog.InfoContext(ctx, "starting MCP server", "address", cfg.Addr, "path", mcpPath)
+		slog.InfoContext(
+			ctx,
+			"starting MCP server",
+			"address", cfg.Addr,
+			"path", mcpPath,
+			"version", buildVersion,
+			"revision", buildRevision,
+		)
 		errs <- server.ListenAndServe()
 	}()
 

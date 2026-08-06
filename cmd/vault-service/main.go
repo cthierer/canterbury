@@ -72,6 +72,11 @@ const (
 	defaultHealthTimeout   = 2 * time.Second
 )
 
+var (
+	buildVersion  = "dev"
+	buildRevision = "unknown"
+)
+
 func main() {
 	ctx := context.Background()
 	exitCode := run(ctx, os.Args[1:], os.Stdout)
@@ -129,7 +134,13 @@ func serve(ctx context.Context, cfg serveConfig) error {
 
 	errs := make(chan error, 1)
 	go func() {
-		slog.InfoContext(ctx, "starting vault service", "address", cfg.Addr)
+		slog.InfoContext(
+			ctx,
+			"starting vault service",
+			"address", cfg.Addr,
+			"version", buildVersion,
+			"revision", buildRevision,
+		)
 		errs <- server.http.ListenAndServe()
 	}()
 

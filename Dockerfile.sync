@@ -1,34 +1,43 @@
 FROM node:24-bookworm-slim
 
+ARG CANTERBURY_VERSION=dev
+ARG CANTERBURY_REVISION=unknown
+
 WORKDIR /app
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends  \
-    ca-certificates \
-    git \
-    tini \
-    && rm -rf /var/lib/apt/lists/*
+	&& apt-get install -y --no-install-recommends \
+		ca-certificates \
+		git \
+		tini \
+	&& rm -rf /var/lib/apt/lists/*
 
 COPY sync/package.json sync/package-lock.json ./
 RUN npm ci --omit=dev
 
-RUN mkdir -p /vault
+RUN mkdir -p /vault /run/canterbury-sync
 
 VOLUME ["/vault"]
 
 RUN useradd -m -u 10001 obsidian \
-    && chown -R obsidian:obsidian /app /vault
+	&& chown -R obsidian:obsidian /app /vault /run/canterbury-sync
 
 ENV SYNC_VAULT_PATH=/vault
 ENV SYNC_VAULT_NAME=""
-ENV SYNC_VAULT_PASSWORD="" 
+ENV SYNC_VAULT_PASSWORD=""
 ENV SYNC_OBSIDIAN_AUTH_TOKEN=""
+ENV SYNC_HEALTH_STATE_PATH=/run/canterbury-sync/health.json
+ENV CANTERBURY_VERSION=${CANTERBURY_VERSION}
+ENV CANTERBURY_REVISION=${CANTERBURY_REVISION}
 
-COPY sync/sync.js /app/sync.js
+COPY sync/sync.js sync/health.js sync/worker.js /app/
 
 RUN chmod +x /app/sync.js \
-    && chown obsidian:obsidian /app/sync.js
+	&& chown obsidian:obsidian /app/sync.js
 
 USER obsidian
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+	CMD ["/app/sync.js", "healthcheck", "--mode", "ready"]
 
 ENTRYPOINT ["tini", "--", "/app/sync.js"]

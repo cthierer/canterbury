@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"flag"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -267,6 +268,48 @@ func TestVaultServerReadinessLifecycle(t *testing.T) {
 	}
 	if len(entries) != 0 {
 		t.Fatalf("health lifecycle created %d audit entries, want none", len(entries))
+	}
+}
+
+func TestServeStopsWhenContextIsCanceled(t *testing.T) {
+	jwks := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, _ *http.Request) {
+		res.Header().Set("Content-Type", "application/json")
+		_, _ = res.Write([]byte(`{"keys":[]}`))
+	}))
+	t.Cleanup(jwks.Close)
+
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("reserve listener: %v", err)
+	}
+	address := listener.Addr().String()
+	if err := listener.Close(); err != nil {
+		t.Fatalf("close reserved listener: %v", err)
+	}
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cfg := validServeConfig(t, jwks.URL)
+	cfg.Addr = address
+	errs := make(chan error, 1)
+	go func() {
+		errs <- serve(ctx, cfg)
+	}()
+
+	healthCfg := healthcheckConfig{URL: "http://" + address, Timeout: 100 * time.Millisecond}
+	for attempt := 0; attempt < 100; attempt++ {
+		if err := healthcheck(t.Context(), healthCfg); err == nil {
+			break
+		}
+		if attempt == 99 {
+			t.Fatal("vault service did not become ready")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	cancel()
+
+	if err := <-errs; err != nil {
+		t.Fatalf("serve() canceled error = %v", err)
 	}
 }
 

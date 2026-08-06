@@ -1,5 +1,8 @@
 FROM golang:1.26-bookworm AS build
 
+ARG CANTERBURY_VERSION=dev
+ARG CANTERBURY_REVISION=unknown
+
 WORKDIR /src
 
 COPY go.mod go.sum ./
@@ -9,7 +12,9 @@ COPY cmd ./cmd
 COPY gen ./gen
 COPY internal ./internal
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/mcp-server ./cmd/mcp-server
+RUN CGO_ENABLED=0 GOOS=linux go build \
+	-ldflags "-X main.buildVersion=${CANTERBURY_VERSION} -X main.buildRevision=${CANTERBURY_REVISION}" \
+	-o /out/mcp-server ./cmd/mcp-server
 
 FROM debian:bookworm-slim
 
