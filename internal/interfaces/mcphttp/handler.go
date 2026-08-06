@@ -10,9 +10,6 @@ import (
 	"github.com/redpanda-data/protoc-gen-go-mcp/pkg/runtime/gosdk"
 )
 
-// Path is the HTTP route for the MCP Streamable HTTP transport.
-const Path = "/mcp"
-
 // NewHandler creates a stateless MCP HTTP handler backed by the vault client.
 func NewHandler(
 	vaultClient vaultv1connect.VaultServiceClient,
@@ -34,9 +31,7 @@ func NewHandler(
 		},
 	)
 
-	mux := http.NewServeMux()
-	mux.Handle(Path, requireBearer(mcpHandler))
-	return mux
+	return requireBearer(mcpHandler)
 }
 
 func isExposedTool(name string) bool {

@@ -16,7 +16,12 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
+	"connectrpc.com/grpchealth"
 	"github.com/cthierer/canterbury/gen/go/canterbury/vault/v1/vaultv1connect"
+	"github.com/cthierer/canterbury/internal/adapters/healthgrpc"
+	"github.com/cthierer/canterbury/internal/adapters/healthstatic"
+	"github.com/cthierer/canterbury/internal/app/health"
+	"github.com/cthierer/canterbury/internal/interfaces/healthhttp"
 	"github.com/cthierer/canterbury/internal/interfaces/mcphttp"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
@@ -29,6 +34,8 @@ const (
 	idleTimeout         = 60 * time.Second
 	shutdownGracePeriod = 10 * time.Second
 	serverUserAgent     = "canterbury-mcp-server/" + serverVersion
+	mcpPath             = "/mcp"
+	healthPath          = "/health"
 )
 
 type config struct {
@@ -68,7 +75,32 @@ func run() error {
 		config.Vault.BaseURL,
 		connect.WithInterceptors(mcphttp.NewForwardMetadataInterceptor(serverUserAgent)),
 	)
-	handler := mcphttp.NewHandler(vaultClient, serverName, serverVersion)
+	mcpHandler := mcphttp.NewHandler(vaultClient, serverName, serverVersion)
+
+	vaultHealth := grpchealth.NewClient(
+		httpClient,
+		config.Vault.BaseURL,
+	)
+
+	vaultHealthChecker, err := healthgrpc.NewChecker(vaultHealth, vaultv1connect.VaultServiceName)
+	if err != nil {
+		return fmt.Errorf("initialize vault health checker: %w", err)
+	}
+
+	mcpHealthChecker := healthstatic.NewChecker()
+	healthService, err := health.NewService(mcpHealthChecker, vaultHealthChecker)
+	if err != nil {
+		return fmt.Errorf("initialize health service: %w", err)
+	}
+
+	healthHandler, err := healthhttp.NewHealthServiceHandler(healthService)
+	if err != nil {
+		return fmt.Errorf("initialize health handler: %w", err)
+	}
+
+	handler := http.NewServeMux()
+	handler.Handle(healthPath, healthHandler)
+	handler.Handle(mcpPath, mcpHandler)
 
 	requestsCtx, cancelRequests := context.WithCancel(context.Background())
 	defer cancelRequests()
@@ -84,7 +116,7 @@ func run() error {
 
 	errs := make(chan error, 1)
 	go func() {
-		slog.InfoContext(ctx, "starting MCP server", "address", config.Addr, "path", mcphttp.Path)
+		slog.InfoContext(ctx, "starting MCP server", "address", config.Addr, "path", mcpPath)
 		errs <- server.ListenAndServe()
 	}()
 
@@ -93,6 +125,7 @@ func run() error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGracePeriod)
 		defer cancel()
 
+		mcpHealthChecker.SetNotServing()
 		if err := server.Shutdown(shutdownCtx); err != nil {
 			cancelRequests()
 			if closeErr := server.Close(); closeErr != nil {

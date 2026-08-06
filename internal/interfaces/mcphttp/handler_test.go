@@ -97,7 +97,7 @@ func TestHandlerForwardsAuthorizedTools(t *testing.T) {
 	mcpServer := httptest.NewServer(newTestHandler(vaultServer.URL, time.Second))
 	defer mcpServer.Close()
 
-	session := connectMCPClient(t, mcpServer.URL+Path, "first-token", "request-123")
+	session := connectMCPClient(t, mcpServer.URL, "first-token", "request-123")
 	tools, err := session.ListTools(t.Context(), nil)
 	if err != nil {
 		t.Fatalf("ListTools() error = %v", err)
@@ -146,7 +146,7 @@ func TestHandlerForwardsAuthorizedTools(t *testing.T) {
 		}
 	}
 
-	secondSession := connectMCPClient(t, mcpServer.URL+Path, "second-token", "request-456")
+	secondSession := connectMCPClient(t, mcpServer.URL, "second-token", "request-456")
 	_, err = secondSession.CallTool(t.Context(), &mcp.CallToolParams{
 		Name:      "read_note",
 		Arguments: map[string]any{"ref": map[string]any{"path": "Public/Service Brief.md"}},
@@ -164,7 +164,7 @@ func TestHandlerRequiresBearer(t *testing.T) {
 	server := httptest.NewServer(newTestHandler("http://127.0.0.1:1", time.Second))
 	defer server.Close()
 
-	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL+Path, strings.NewReader(`{}`))
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodPost, server.URL, strings.NewReader(`{}`))
 	if err != nil {
 		t.Fatalf("NewRequestWithContext() error = %v", err)
 	}
@@ -205,7 +205,7 @@ func TestHandlerReturnsDownstreamErrors(t *testing.T) {
 			vaultServer := newVaultServer(t, vault)
 			mcpServer := httptest.NewServer(newTestHandler(vaultServer.URL, time.Second))
 			defer mcpServer.Close()
-			session := connectMCPClient(t, mcpServer.URL+Path, "token", "")
+			session := connectMCPClient(t, mcpServer.URL, "token", "")
 
 			result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
 				Name:      "read_note",
@@ -226,7 +226,7 @@ func TestHandlerAppliesVaultRequestTimeout(t *testing.T) {
 	vaultServer := newVaultServer(t, vault)
 	mcpServer := httptest.NewServer(newTestHandler(vaultServer.URL, 10*time.Millisecond))
 	defer mcpServer.Close()
-	session := connectMCPClient(t, mcpServer.URL+Path, "token", "")
+	session := connectMCPClient(t, mcpServer.URL, "token", "")
 
 	result, err := session.CallTool(t.Context(), &mcp.CallToolParams{
 		Name:      "read_note",

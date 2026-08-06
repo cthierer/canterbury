@@ -206,18 +206,27 @@ Supporting packages in `internal/app/`:
 - `clock` provides a `Clock` abstraction and a system-time implementation used
   for audit timestamps.
 - `devauth` implements local development token minting.
+- `health` resolves ordered service and dependency readiness checks, with
+  `NOT_SERVING` taking precedence and short-circuiting remaining checks.
 - `idgen` provides unique ID generation (ULID) used for audit event IDs.
 
 `internal/adapters/auditfs` holds the filesystem append-only audit log
 implementation. Future write operations must not commit successfully without an
 independent audit record.
 
+`internal/adapters/healthgrpc` translates the vault service's Connect/gRPC
+health status into Canterbury's health domain. `internal/adapters/healthstatic`
+holds the MCP process readiness state and changes it to not serving before
+graceful shutdown.
+
 `internal/interfaces/vaultrpc` is the vault RPC interface.
 `internal/interfaces/mcphttp` adapts the generated MCP tools to stateless HTTP,
 enforces the bearer-header contract, and forwards request identity and
-correlation metadata through a Connect interceptor. `cmd/mcp-server` retains
-configuration, client construction, and HTTP lifecycle orchestration. This
-keeps the MCP process away from vault files and preserves the vault service's
+correlation metadata through a Connect interceptor.
+`internal/interfaces/healthhttp` exposes the aggregate readiness status without
+authentication or diagnostic metadata. `cmd/mcp-server` owns HTTP routing,
+configuration, client construction, and lifecycle orchestration. This keeps the
+MCP process away from vault files and preserves the vault service's
 authentication, authorization, and mandatory audit boundary. A future
 `internal/interfaces/rest` should likewise expose protocol adapters only rather
 than reading vault files directly.

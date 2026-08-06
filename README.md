@@ -28,7 +28,8 @@ Canterbury is in early development. The current implementation includes:
   authentication failures.
 - Connect/gRPC health, reflection, `ReadNote`, and `SearchNotes` handlers.
 - A stateless Streamable HTTP MCP gateway exposing the allowlisted `read_note`
-  and `search_notes` tools at `POST /mcp`.
+  and `search_notes` tools at `POST /mcp`, with an internal readiness endpoint
+  at `GET /health`.
 - A development auth CLI that starts a local Connect/gRPC service for minting
   local JWTs and serving its public verification key as JWKS.
 - Repository formatting, test, and linting tooling.
@@ -464,6 +465,28 @@ The gateway serves stateless Streamable HTTP with JSON responses at
 `X-Request-ID`, and `traceparent` to the vault service and does not retain
 identity-bearing MCP session state.
 
+The same listener exposes an unauthenticated readiness endpoint at
+`http://127.0.0.1:50053/health`. It checks both the MCP process readiness state
+and the vault service's Connect/gRPC health status. The response contains only a
+gRPC-style aggregate status:
+
+```json
+{ "status": "SERVING" }
+```
+
+`SERVING` returns HTTP `200`. `NOT_SERVING` and `UNKNOWN` return HTTP `503`.
+The endpoint supports `GET` and `HEAD`, performs no vault reads or writes, and
+does not create audit events. Its downstream check is bounded by
+`MCP_SERVER_VAULT_REQUEST_TIMEOUT`. During graceful shutdown, the local MCP
+status changes to `NOT_SERVING` and short-circuits the downstream check.
+
+The readiness path is intended only for internal deployment probes. It does not
+require a bearer assertion and must not be routed publicly. For example:
+
+```bash
+curl --fail-with-body http://127.0.0.1:50053/health
+```
+
 | Variable                           | Default                  | Purpose                                   |
 | ---------------------------------- | ------------------------ | ----------------------------------------- |
 | `MCP_SERVER_ADDR`                  | `127.0.0.1:50053`        | MCP HTTP listen address.                  |
@@ -471,10 +494,11 @@ identity-bearing MCP session state.
 | `MCP_SERVER_VAULT_REQUEST_TIMEOUT` | `10s`                    | Positive timeout for each downstream RPC. |
 
 The public Compose deployment does not publish the MCP container port. Pomerium
-routes `/mcp` before the catch-all vault route, overwrites `Authorization` with
-its signed assertion, and the gateway forwards that assertion unchanged. The
-shared route hostname keeps Pomerium's JWT issuer and audience aligned with the
-vault service checks. See
+routes only `/mcp` to the MCP server before the catch-all vault route; it does
+not expose `/health`. Pomerium overwrites `Authorization` with its signed
+assertion, and the gateway forwards that assertion unchanged. The shared route
+hostname keeps Pomerium's JWT issuer and audience aligned with the vault service
+checks. See
 [Pomerium JWT claim headers](https://www.pomerium.com/docs/reference/jwt-claim-headers).
 
 This deployment uses an ordinary protected HTTP route. It does not enable
