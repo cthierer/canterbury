@@ -9,8 +9,8 @@ import (
 	"strconv"
 )
 
-// ServeHTTP returns the resolved readiness status for GET and HEAD requests.
-func (service *HealthServiceHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
+// ServeHTTP returns the resolved health status for GET and HEAD requests.
+func (service *healthServiceHandler) ServeHTTP(res http.ResponseWriter, req *http.Request) {
 	if req.Method != http.MethodGet && req.Method != http.MethodHead {
 		res.Header().Set("Allow", "GET, HEAD")
 		http.Error(res, "method not allowed", http.StatusMethodNotAllowed)

@@ -28,8 +28,8 @@ Canterbury is in early development. The current implementation includes:
   authentication failures.
 - Connect/gRPC health, reflection, `ReadNote`, and `SearchNotes` handlers.
 - A stateless Streamable HTTP MCP gateway exposing the allowlisted `read_note`
-  and `search_notes` tools at `POST /mcp`, with an internal readiness endpoint
-  at `GET /health`.
+  and `search_notes` tools at `POST /mcp`, with internal liveness and readiness
+  endpoints at `GET /health/live` and `GET /health/ready`.
 - A development auth CLI that starts a local Connect/gRPC service for minting
   local JWTs and serving its public verification key as JWKS.
 - Repository formatting, test, and linting tooling.
@@ -465,26 +465,34 @@ The gateway serves stateless Streamable HTTP with JSON responses at
 `X-Request-ID`, and `traceparent` to the vault service and does not retain
 identity-bearing MCP session state.
 
-The same listener exposes an unauthenticated readiness endpoint at
-`http://127.0.0.1:50053/health`. It checks both the MCP process readiness state
-and the vault service's Connect/gRPC health status. The response contains only a
-gRPC-style aggregate status:
+The same listener exposes two unauthenticated health endpoints:
+
+| Endpoint        | Contract                                                                  |
+| --------------- | ------------------------------------------------------------------------- |
+| `/health/live`  | Reports only the MCP process lifecycle state and performs no network I/O. |
+| `/health/ready` | Aggregates the MCP lifecycle state and vault Connect/gRPC health status.  |
+
+Both endpoints return only a gRPC-style status:
 
 ```json
 { "status": "SERVING" }
 ```
 
 `SERVING` returns HTTP `200`. `NOT_SERVING` and `UNKNOWN` return HTTP `503`.
-The endpoint supports `GET` and `HEAD`, performs no vault reads or writes, and
-does not create audit events. Its downstream check is bounded by
-`MCP_SERVER_VAULT_REQUEST_TIMEOUT`. During graceful shutdown, the local MCP
-status changes to `NOT_SERVING` and short-circuits the downstream check.
+Both endpoints support `GET` and `HEAD`, perform no vault reads or writes, and
+do not create audit events. The readiness endpoint's downstream check is
+bounded by `MCP_SERVER_VAULT_REQUEST_TIMEOUT`. During graceful shutdown, the
+local MCP status changes to `NOT_SERVING`; readiness then short-circuits without
+contacting the vault.
 
-The readiness path is intended only for internal deployment probes. It does not
-require a bearer assertion and must not be routed publicly. For example:
+The health paths are intended only for internal deployment probes. They do not
+require a bearer assertion and must not be routed publicly. Use liveness for
+restart decisions and readiness for traffic admission, startup ordering, and
+deployment verification. For example:
 
 ```bash
-curl --fail-with-body http://127.0.0.1:50053/health
+curl --fail-with-body http://127.0.0.1:50053/health/live
+curl --fail-with-body http://127.0.0.1:50053/health/ready
 ```
 
 | Variable                           | Default                  | Purpose                                   |
@@ -495,7 +503,7 @@ curl --fail-with-body http://127.0.0.1:50053/health
 
 The public Compose deployment does not publish the MCP container port. Pomerium
 routes only `/mcp` to the MCP server before the catch-all vault route; it does
-not expose `/health`. Pomerium overwrites `Authorization` with its signed
+not expose the `/health/` subtree. Pomerium overwrites `Authorization` with its signed
 assertion, and the gateway forwards that assertion unchanged. The shared route
 hostname keeps Pomerium's JWT issuer and audience aligned with the vault service
 checks. See

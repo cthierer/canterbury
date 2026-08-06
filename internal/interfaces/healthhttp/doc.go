@@ -1,2 +1,2 @@
-// Package healthhttp exposes application readiness over HTTP.
+// Package healthhttp exposes application liveness and readiness over HTTP.
 package healthhttp

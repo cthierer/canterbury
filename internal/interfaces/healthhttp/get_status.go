@@ -8,7 +8,7 @@ import (
 	"github.com/cthierer/canterbury/internal/domain/health"
 )
 
-func (service *HealthServiceHandler) getStatus(ctx context.Context) (status, error) {
+func (service *healthServiceHandler) getStatus(ctx context.Context) (status, error) {
 	result, err := service.health.Check(ctx)
 	if err != nil {
 		return status{}, fmt.Errorf("check service health: %w", err)

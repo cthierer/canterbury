@@ -52,10 +52,11 @@ service. Both routes use the same external hostname so Pomerium's assertion
 issuer and audience remain acceptable to the vault service when the MCP server
 forwards the assertion.
 
-The MCP server's unauthenticated `/health` readiness endpoint remains internal
-to the Compose network and is not included in the Pomerium routing policy.
-Internal deployment probes may call it directly without weakening bearer
-enforcement on `/mcp`.
+The MCP server's unauthenticated `/health/live` and `/health/ready` endpoints
+remain internal to the Compose network and are not included in the Pomerium
+routing policy. Internal deployment probes may call them directly without
+weakening bearer enforcement on `/mcp`. Liveness reflects only the MCP process
+lifecycle; readiness also requires the vault service to report serving.
 
 The route is an ordinary protected HTTP route, not Pomerium's experimental
 MCP-native OAuth mode. MCP clients must send a bearer credential that the

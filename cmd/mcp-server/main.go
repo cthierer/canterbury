@@ -88,18 +88,23 @@ func run() error {
 	}
 
 	mcpHealthChecker := healthstatic.NewChecker()
-	healthService, err := health.NewService(mcpHealthChecker, vaultHealthChecker)
+	liveService, err := health.NewService(mcpHealthChecker)
 	if err != nil {
-		return fmt.Errorf("initialize health service: %w", err)
+		return fmt.Errorf("initialize health service for live checks: %w", err)
 	}
 
-	healthHandler, err := healthhttp.NewHealthServiceHandler(healthService)
+	readyService, err := health.NewService(mcpHealthChecker, vaultHealthChecker)
+	if err != nil {
+		return fmt.Errorf("initialize health service for ready checks: %w", err)
+	}
+
+	healthHandler, err := healthhttp.NewHandler(liveService, readyService)
 	if err != nil {
 		return fmt.Errorf("initialize health handler: %w", err)
 	}
 
 	handler := http.NewServeMux()
-	handler.Handle(healthPath, healthHandler)
+	handler.Handle(healthPath+"/", http.StripPrefix(healthPath, healthHandler))
 	handler.Handle(mcpPath, mcpHandler)
 
 	requestsCtx, cancelRequests := context.WithCancel(context.Background())

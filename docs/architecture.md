@@ -216,17 +216,18 @@ independent audit record.
 
 `internal/adapters/healthgrpc` translates the vault service's Connect/gRPC
 health status into Canterbury's health domain. `internal/adapters/healthstatic`
-holds the MCP process readiness state and changes it to not serving before
+holds the MCP process lifecycle state and changes it to not serving before
 graceful shutdown.
 
 `internal/interfaces/vaultrpc` is the vault RPC interface.
 `internal/interfaces/mcphttp` adapts the generated MCP tools to stateless HTTP,
 enforces the bearer-header contract, and forwards request identity and
 correlation metadata through a Connect interceptor.
-`internal/interfaces/healthhttp` exposes the aggregate readiness status without
-authentication or diagnostic metadata. `cmd/mcp-server` owns HTTP routing,
-configuration, client construction, and lifecycle orchestration. This keeps the
-MCP process away from vault files and preserves the vault service's
-authentication, authorization, and mandatory audit boundary. A future
-`internal/interfaces/rest` should likewise expose protocol adapters only rather
-than reading vault files directly.
+`internal/interfaces/healthhttp` exposes separate liveness and readiness
+statuses without authentication or diagnostic metadata. Liveness checks only
+the local MCP lifecycle state; readiness aggregates that state with vault
+Connect/gRPC health. `cmd/mcp-server` owns HTTP routing, configuration, client
+construction, and lifecycle orchestration. This keeps the MCP process away from
+vault files and preserves the vault service's authentication, authorization,
+and mandatory audit boundary. A future `internal/interfaces/rest` should
+likewise expose protocol adapters only rather than reading vault files directly.

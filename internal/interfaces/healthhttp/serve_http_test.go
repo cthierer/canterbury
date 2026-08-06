@@ -13,7 +13,7 @@ import (
 )
 
 func TestNewHealthServiceHandlerValidatesApplication(t *testing.T) {
-	_, err := NewHealthServiceHandler(nil)
+	_, err := newHealthServiceHandler(nil)
 	if err == nil {
 		t.Fatal("expected error")
 	}
@@ -155,10 +155,10 @@ func (application *fakeHealthApplication) Check(context.Context) (health.Result,
 	return application.result, application.err
 }
 
-func mustHealthHandler(t *testing.T, application HealthApplication) *HealthServiceHandler {
+func mustHealthHandler(t *testing.T, application HealthApplication) *healthServiceHandler {
 	t.Helper()
 
-	handler, err := NewHealthServiceHandler(application)
+	handler, err := newHealthServiceHandler(application)
 	if err != nil {
 		t.Fatalf("NewHealthServiceHandler() error = %v", err)
 	}
