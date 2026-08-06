@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"github.com/cthierer/canterbury/internal/domain/health"
 	"github.com/cthierer/canterbury/internal/interfaces/healthcli"
@@ -82,10 +83,43 @@ func TestServingPassesContextToApplication(t *testing.T) {
 	}
 }
 
+func TestCheckReportsServingAndFailure(t *testing.T) {
+	serving := mustService(t, &fakeHealthApplication{result: health.Result{Status: health.StatusServing}})
+	if err := serving.Check(t.Context(), time.Second); err != nil {
+		t.Fatalf("Check() error = %v", err)
+	}
+
+	notServing := mustService(t, &fakeHealthApplication{result: health.Result{Status: health.StatusNotServing}})
+	if err := notServing.Check(t.Context(), time.Second); !errors.Is(err, healthcli.ErrHealthcheckFailed) {
+		t.Fatalf("Check() error = %v, want %v", err, healthcli.ErrHealthcheckFailed)
+	}
+
+	if err := serving.Check(t.Context(), 0); err == nil {
+		t.Fatal("Check() accepted nonpositive timeout")
+	}
+}
+
+func TestCheckAppliesTimeout(t *testing.T) {
+	service := mustService(t, healthApplicationFunc(func(ctx context.Context) (health.Result, error) {
+		<-ctx.Done()
+		return health.Result{}, ctx.Err()
+	}))
+
+	if err := service.Check(t.Context(), time.Millisecond); !errors.Is(err, healthcli.ErrHealthcheckFailed) {
+		t.Fatalf("Check() error = %v, want %v", err, healthcli.ErrHealthcheckFailed)
+	}
+}
+
 type fakeHealthApplication struct {
 	result  health.Result
 	err     error
 	context context.Context
+}
+
+type healthApplicationFunc func(context.Context) (health.Result, error)
+
+func (application healthApplicationFunc) Check(ctx context.Context) (health.Result, error) {
+	return application(ctx)
 }
 
 func (application *fakeHealthApplication) Check(ctx context.Context) (health.Result, error) {

@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/cthierer/canterbury/internal/interfaces/healthcli"
 )
 
 func TestLoadServeConfigDefaultsAndOverrides(t *testing.T) {
@@ -79,6 +81,15 @@ func TestLoadHealthcheckConfigUsesDerivedDefaults(t *testing.T) {
 	}
 	if got.URL != "http://mcp.example.test:6000/health/live" {
 		t.Fatalf("URL = %q, want derived address override", got.URL)
+	}
+
+	t.Setenv("MCP_SERVER_HEALTHCHECK_URL", " ")
+	got, err = loadHealthcheckConfig(nil, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("loadHealthcheckConfig() blank URL error = %v", err)
+	}
+	if got.URL != "http://mcp.example.test:6000/health/live" {
+		t.Fatalf("blank URL fallback = %q", got.URL)
 	}
 }
 
@@ -156,8 +167,8 @@ func TestHealthcheckReportsServingAndFailure(t *testing.T) {
 		server := healthServer(t, http.StatusServiceUnavailable, `{"status":"NOT_SERVING"}`)
 
 		err := healthcheck(t.Context(), healthcheckConfig{URL: server.URL, Timeout: time.Second})
-		if !errors.Is(err, errHealthcheckFailed) {
-			t.Fatalf("healthcheck() error = %v, want %v", err, errHealthcheckFailed)
+		if !errors.Is(err, healthcli.ErrHealthcheckFailed) {
+			t.Fatalf("healthcheck() error = %v, want %v", err, healthcli.ErrHealthcheckFailed)
 		}
 	})
 
@@ -165,8 +176,8 @@ func TestHealthcheckReportsServingAndFailure(t *testing.T) {
 		server := healthServer(t, http.StatusInternalServerError, `{"status":"UNKNOWN"}`)
 
 		err := healthcheck(t.Context(), healthcheckConfig{URL: server.URL, Timeout: time.Second})
-		if !errors.Is(err, errHealthcheckFailed) {
-			t.Fatalf("healthcheck() error = %v, want %v", err, errHealthcheckFailed)
+		if !errors.Is(err, healthcli.ErrHealthcheckFailed) {
+			t.Fatalf("healthcheck() error = %v, want %v", err, healthcli.ErrHealthcheckFailed)
 		}
 	})
 }
@@ -178,8 +189,8 @@ func TestHealthcheckHonorsTimeout(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	err := healthcheck(t.Context(), healthcheckConfig{URL: server.URL, Timeout: 10 * time.Millisecond})
-	if !errors.Is(err, errHealthcheckFailed) {
-		t.Fatalf("healthcheck() error = %v, want %v", err, errHealthcheckFailed)
+	if !errors.Is(err, healthcli.ErrHealthcheckFailed) {
+		t.Fatalf("healthcheck() error = %v, want %v", err, healthcli.ErrHealthcheckFailed)
 	}
 }
 

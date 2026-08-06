@@ -294,20 +294,24 @@ VAULT_SERVICE_AUTH_MAPPING_FILE=./sample-auth/scopes.toml
 VAULT_SERVICE_AUDIT_ROOT=./audit
 VAULT_SERVICE_AUDIT_WRITER_ID=
 VAULT_SERVICE_ADDR=127.0.0.1:50051
+VAULT_SERVICE_HEALTHCHECK_URL=
+VAULT_SERVICE_HEALTHCHECK_TIMEOUT=2s
 VAULT_SERVICE_AUDIT_HMAC_KEY=MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=
 ```
 
-| Variable                          | Required | Description                                                                                                                                           |
-| --------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `VAULT_SERVICE_ROOT`              | Yes      | Local filesystem path to the mirrored vault read by the Go vault service.                                                                             |
-| `VAULT_SERVICE_AUTH_ISSUER`       | Yes      | Expected JWT issuer.                                                                                                                                  |
-| `VAULT_SERVICE_AUTH_AUDIENCE`     | Yes      | Expected JWT audience.                                                                                                                                |
-| `VAULT_SERVICE_AUTH_JWKS_URL`     | Yes      | JWKS endpoint used to verify signed bearer JWTs.                                                                                                      |
-| `VAULT_SERVICE_AUTH_MAPPING_FILE` | Yes      | TOML file mapping exact `(issuer, subject)` pairs to Canterbury scopes.                                                                               |
-| `VAULT_SERVICE_AUDIT_ROOT`        | Yes      | Local filesystem directory where date-rotated JSONL audit logs are written outside the vault.                                                         |
-| `VAULT_SERVICE_AUDIT_HMAC_KEY`    | Yes      | Base64-encoded HMAC key, at least 32 decoded bytes, used to hash remote client addresses before writing audit records.                                |
-| `VAULT_SERVICE_AUDIT_WRITER_ID`   | No       | Optional filesystem-safe identifier included in audit filenames. When unset, the service generates one from hostname, PID, and a short random suffix. |
-| `VAULT_SERVICE_ADDR`              | No       | Address for the Connect server. Defaults to `127.0.0.1:50051` when not set.                                                                           |
+| Variable                            | Required | Description                                                                                                                                           |
+| ----------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `VAULT_SERVICE_ROOT`                | Yes      | Local filesystem path to the mirrored vault read by the Go vault service.                                                                             |
+| `VAULT_SERVICE_AUTH_ISSUER`         | Yes      | Expected JWT issuer.                                                                                                                                  |
+| `VAULT_SERVICE_AUTH_AUDIENCE`       | Yes      | Expected JWT audience.                                                                                                                                |
+| `VAULT_SERVICE_AUTH_JWKS_URL`       | Yes      | JWKS endpoint used to verify signed bearer JWTs. Its initial key set must load before the service becomes ready.                                      |
+| `VAULT_SERVICE_AUTH_MAPPING_FILE`   | Yes      | TOML file mapping exact `(issuer, subject)` pairs to Canterbury scopes.                                                                               |
+| `VAULT_SERVICE_AUDIT_ROOT`          | Yes      | Local filesystem directory where date-rotated JSONL audit logs are written outside the vault.                                                         |
+| `VAULT_SERVICE_AUDIT_HMAC_KEY`      | Yes      | Base64-encoded HMAC key, at least 32 decoded bytes, used to hash remote client addresses before writing audit records.                                |
+| `VAULT_SERVICE_AUDIT_WRITER_ID`     | No       | Optional filesystem-safe identifier included in audit filenames. When unset, the service generates one from hostname, PID, and a short random suffix. |
+| `VAULT_SERVICE_ADDR`                | No       | Address for the Connect server. Defaults to `127.0.0.1:50051` when not set.                                                                           |
+| `VAULT_SERVICE_HEALTHCHECK_URL`     | No       | Complete Connect base URL for the healthcheck CLI. Defaults to `http://<VAULT_SERVICE_ADDR>`.                                                         |
+| `VAULT_SERVICE_HEALTHCHECK_TIMEOUT` | No       | Positive timeout for the healthcheck CLI. Defaults to `2s`.                                                                                           |
 
 The `.env.example` file includes a development-only sample
 `VAULT_SERVICE_AUDIT_HMAC_KEY` so the local demo starts without shell expansion
@@ -344,6 +348,41 @@ audience `canterbury.vault.local` when using the sample configuration.
 
 The vault service loads `.env` from the repository root when present. Real
 environment variables take precedence over values in `.env`.
+
+### Vault Readiness
+
+The vault listener exposes the standard unauthenticated Connect/gRPC health
+service. Readiness checks must request
+`canterbury.vault.v1.VaultService` through `grpc.health.v1.Health/Check`.
+The named service reports `SERVING` only after the vault root, independent
+audit recorder, authorization mapping, and initial JWKS key set have loaded.
+Initialization failures stop the process before it binds the listener, and the
+status changes back to `NOT_SERVING` before graceful shutdown.
+
+The included command provides the same bounded container-probe interface as the
+MCP service:
+
+```bash
+go run ./cmd/vault-service healthcheck
+go run ./cmd/vault-service healthcheck --url http://vault-service:50051 --timeout 5s
+```
+
+It exits successfully only when the named vault service returns `SERVING`.
+Configuration loads from `.env`, then the environment, and command flags take
+precedence over both. The probe requires no bearer token, reads no notes, and
+creates no audit events. It checks completed startup initialization rather than
+continuously testing audit filesystem writes or later JWKS refreshes.
+
+Both production Go images use the same exec-form Docker healthcheck cadence:
+30-second intervals, a 5-second Docker timeout, a 5-second start period, and
+three retries. Their application probe timeout defaults to 2 seconds. The MCP
+image deliberately checks local operational health at `/health/live` and
+excludes downstream outages; the vault image checks its own startup readiness
+through Connect/gRPC. Neither image installs a general-purpose network toolbox
+for probing. The image supplies its loopback URL through
+`MCP_SERVER_HEALTHCHECK_URL` or `VAULT_SERVICE_HEALTHCHECK_URL`, so a deployment
+that changes an internal listener can override the appropriate environment
+variable without replacing the Docker healthcheck command.
 
 ### Run The Local Auth Smoke Test
 
@@ -465,12 +504,13 @@ The gateway serves stateless Streamable HTTP with JSON responses at
 `X-Request-ID`, and `traceparent` to the vault service and does not retain
 identity-bearing MCP session state.
 
-The same listener exposes two unauthenticated health endpoints:
+The same listener exposes two unauthenticated signals with deliberately
+different operational meanings:
 
-| Endpoint        | Contract                                                                  |
-| --------------- | ------------------------------------------------------------------------- |
-| `/health/live`  | Reports only the MCP process lifecycle state and performs no network I/O. |
-| `/health/ready` | Aggregates the MCP lifecycle state and vault Connect/gRPC health status.  |
+| Endpoint        | Contract                                                                                                                                                                                                                                                                                 |
+| --------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/health/live`  | Reports local MCP operational health. A successful request proves configuration and handler initialization completed, the listener is answering, and shutdown has not begun. It does not contact the vault or reflect any other upstream outage.                                         |
+| `/health/ready` | Reports dependency-inclusive readiness by combining local MCP health with the vault Connect/gRPC health status. Use it only when a caller specifically needs end-to-end vault availability, such as a deployment smoke test or an intentional downstream startup/traffic-admission gate. |
 
 Both endpoints return only a gRPC-style status:
 
@@ -480,15 +520,18 @@ Both endpoints return only a gRPC-style status:
 
 `SERVING` returns HTTP `200`. `NOT_SERVING` and `UNKNOWN` return HTTP `503`.
 Both endpoints support `GET` and `HEAD`, perform no vault reads or writes, and
-do not create audit events. The readiness endpoint's downstream check is
-bounded by `MCP_SERVER_VAULT_REQUEST_TIMEOUT`. During graceful shutdown, the
-local MCP status changes to `NOT_SERVING`; readiness then short-circuits without
+do not create audit events. The dependency-inclusive readiness check is bounded
+by `MCP_SERVER_VAULT_REQUEST_TIMEOUT`. During graceful shutdown, the local MCP
+status changes to `NOT_SERVING`; readiness then short-circuits without
 contacting the vault.
 
 The health paths are intended only for internal deployment probes. They do not
-require a bearer assertion and must not be routed publicly. Use liveness for
-restart decisions and readiness for traffic admission, startup ordering, and
-deployment verification. For example:
+require a bearer assertion and must not be routed publicly. The MCP image uses
+`/health/live` for its Docker healthcheck so a vault or identity-provider outage
+does not misclassify the locally functioning MCP process as broken and invite a
+cascading restart policy. `/health/ready` remains available for consumers that
+deliberately want dependency availability included in their decision. For
+example:
 
 ```bash
 curl --fail-with-body http://127.0.0.1:50053/health/live

@@ -4,7 +4,6 @@ package main
 import (
 	"context"
 	"errors"
-	"flag"
 	"fmt"
 	"io"
 	"log/slog"
@@ -24,6 +23,7 @@ import (
 	"github.com/cthierer/canterbury/internal/adapters/healthhttp"
 	"github.com/cthierer/canterbury/internal/adapters/healthstatic"
 	"github.com/cthierer/canterbury/internal/app/health"
+	"github.com/cthierer/canterbury/internal/cliapp"
 	"github.com/cthierer/canterbury/internal/interfaces/healthcli"
 	healthhandler "github.com/cthierer/canterbury/internal/interfaces/healthhttp"
 	"github.com/cthierer/canterbury/internal/interfaces/mcphttp"
@@ -64,55 +64,40 @@ func main() {
 }
 
 func run(ctx context.Context, args []string, output io.Writer) int {
-	cmd, err := parseCommand(args)
+	app := cliapp.Application{
+		Name:           "mcp-server",
+		DefaultCommand: "serve",
+		Prepare:        loadLocalEnv,
+		Commands: []cliapp.Command{
+			{Name: "serve", Summary: "Start the MCP service", Run: runServeCommand},
+			{Name: "healthcheck", Summary: "Determine if an MCP service is healthy", Run: runHealthcheckCommand},
+		},
+		Footer: `Run "mcp-server healthcheck --help" for healthcheck flags.`,
+	}
+
+	return app.Run(ctx, args, output)
+}
+
+func runServeCommand(ctx context.Context, args []string, _ io.Writer) error {
+	cfg, err := loadServeConfig(args)
 	if err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			writeUsage(output)
-			return 0
-		}
-
-		slog.ErrorContext(ctx, "parse CLI command", "err", err)
-		return 1
+		return fmt.Errorf("load MCP server configuration: %w", err)
 	}
 
-	if err := loadLocalEnv(); err != nil {
-		slog.ErrorContext(ctx, "load local environment", "err", err)
-		return 1
+	if err := serve(ctx, cfg); err != nil {
+		return fmt.Errorf("MCP server stopped: %w", err)
 	}
 
-	switch cmd {
-	case commandServe:
-		cfg, err := loadServeConfig(args[1:])
-		if err != nil {
-			slog.ErrorContext(ctx, "load MCP server configuration", "err", err)
-			return 1
-		}
+	return nil
+}
 
-		if err := serve(ctx, cfg); err != nil {
-			slog.ErrorContext(ctx, "MCP server stopped", "err", err)
-			return 1
-		}
-	case commandHealthcheck:
-		cfg, err := loadHealthcheckConfig(args[1:], output)
-		if err != nil {
-			if errors.Is(err, flag.ErrHelp) {
-				return 0
-			}
-
-			slog.ErrorContext(ctx, "load healthcheck configuration", "err", err)
-			return 1
-		}
-
-		if err := healthcheck(ctx, cfg); err != nil {
-			slog.ErrorContext(ctx, "Healthcheck errored", "err", err)
-			return 1
-		}
-	default:
-		slog.ErrorContext(ctx, "Unrecognized command", "command", cmd)
-		return 1
+func runHealthcheckCommand(ctx context.Context, args []string, output io.Writer) error {
+	cfg, err := loadHealthcheckConfig(args, output)
+	if err != nil {
+		return fmt.Errorf("load healthcheck configuration: %w", err)
 	}
 
-	return 0
+	return healthcheck(ctx, cfg)
 }
 
 func serve(ctx context.Context, cfg serveConfig) error {
@@ -199,10 +184,6 @@ func serve(ctx context.Context, cfg serveConfig) error {
 	}
 }
 
-var (
-	errHealthcheckFailed = errors.New("healthcheck failed")
-)
-
 func healthcheck(ctx context.Context, cfg healthcheckConfig) error {
 	healthURL, err := url.Parse(cfg.URL)
 	if err != nil {
@@ -225,14 +206,7 @@ func healthcheck(ctx context.Context, cfg healthcheckConfig) error {
 		return fmt.Errorf("initialize health service: %w", err)
 	}
 
-	healthcheckCtx, cancel := context.WithTimeout(ctx, cfg.Timeout)
-	defer cancel()
-
-	if !healthService.Serving(healthcheckCtx) {
-		return errHealthcheckFailed
-	}
-
-	return nil
+	return healthService.Check(ctx, cfg.Timeout)
 }
 
 func loadServeConfig(args []string) (serveConfig, error) {
@@ -266,26 +240,29 @@ func loadHealthcheckConfig(args []string, output io.Writer) (healthcheckConfig, 
 		URL:     "http://" + addr + healthPath + "/live",
 		Timeout: defaultHealthTimeout,
 	}
+	defaultURL := cfg.URL
 	if err := envconfig.Process("mcp_server", &cfg); err != nil {
 		return healthcheckConfig{}, err
 	}
+	if strings.TrimSpace(cfg.URL) == "" {
+		cfg.URL = defaultURL
+	}
 
-	flags := flag.NewFlagSet("mcp-server healthcheck", flag.ContinueOnError)
-	flags.SetOutput(output)
-	flags.StringVar(&cfg.URL, "url", cfg.URL, "health endpoint URL")
-	flags.DurationVar(&cfg.Timeout, "timeout", cfg.Timeout, "healthcheck timeout")
-	flags.Usage = func() {
-		writeHealthcheckUsage(output, flags)
-	}
-	if err := flags.Parse(args); err != nil {
+	parsed, err := healthcli.ParseConfig(
+		args,
+		output,
+		healthcli.Config{URL: cfg.URL, Timeout: cfg.Timeout},
+		healthcli.ConfigOptions{
+			CommandName:  "mcp-server healthcheck",
+			URLUsage:     "health endpoint URL",
+			NormalizeURL: normalizeHealthURL,
+		},
+	)
+	if err != nil {
 		return healthcheckConfig{}, err
 	}
-	if flags.NArg() > 0 {
-		return healthcheckConfig{}, fmt.Errorf("unexpected healthcheck argument %q", flags.Arg(0))
-	}
-	if err := validateHealthcheckConfig(&cfg); err != nil {
-		return healthcheckConfig{}, err
-	}
+	cfg.URL = parsed.URL
+	cfg.Timeout = parsed.Timeout
 
 	return cfg, nil
 }
@@ -304,20 +281,6 @@ func validateServeConfig(config *serveConfig) error {
 
 	if config.Vault.RequestTimeout <= 0 {
 		return fmt.Errorf("vault request timeout must be positive")
-	}
-
-	return nil
-}
-
-func validateHealthcheckConfig(config *healthcheckConfig) error {
-	healthURL, err := normalizeHealthURL(config.URL)
-	if err != nil {
-		return fmt.Errorf("validate health URL: %w", err)
-	}
-	config.URL = healthURL
-
-	if config.Timeout <= 0 {
-		return fmt.Errorf("healthcheck timeout must be positive")
 	}
 
 	return nil
@@ -379,55 +342,4 @@ func loadLocalEnv() error {
 	}
 
 	return nil
-}
-
-type command string
-
-const (
-	commandHealthcheck command = "healthcheck"
-	commandServe       command = "serve"
-)
-
-var (
-	errUnknownCommand = errors.New("unknown command")
-)
-
-func parseCommand(args []string) (command, error) {
-	if len(args) < 1 {
-		return commandServe, nil
-	}
-
-	commandString := strings.TrimSpace(args[0])
-
-	switch strings.ToLower(commandString) {
-	case "-h", "--help", "help":
-		return "", flag.ErrHelp
-	case "healthcheck":
-		return commandHealthcheck, nil
-	case "serve":
-		return commandServe, nil
-	}
-
-	return "", fmt.Errorf("parsing command: %q: %w", commandString, errUnknownCommand)
-}
-
-func writeUsage(output io.Writer) {
-	_, _ = fmt.Fprint(output, `Usage:
-	mcp-server [command]
-
-Commands:
-	serve        Start the MCP service
-	healthcheck  Determine if an MCP service is healthy
-
-Run "mcp-server healthcheck --help" for healthcheck flags.
-`)
-}
-
-func writeHealthcheckUsage(output io.Writer, flags *flag.FlagSet) {
-	_, _ = fmt.Fprint(output, `Usage:
-	mcp-server healthcheck [flags]
-
-Flags:
-`)
-	flags.PrintDefaults()
 }

@@ -3,12 +3,50 @@ package authjwt
 import (
 	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
 	"github.com/cthierer/canterbury/internal/app/auth"
 	"github.com/golang-jwt/jwt/v5"
 )
+
+func TestNewVerifierRequiresInitialJWKS(t *testing.T) {
+	t.Run("accepts fetched key set", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, _ *http.Request) {
+			res.Header().Set("Content-Type", "application/json")
+			_, _ = res.Write([]byte(`{"keys":[]}`))
+		}))
+		t.Cleanup(server.Close)
+
+		if _, err := NewVerifier(t.Context(), server.URL, []string{"EdDSA"}); err != nil {
+			t.Fatalf("NewVerifier() error = %v", err)
+		}
+	})
+
+	t.Run("rejects failed initial fetch", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, _ *http.Request) {
+			http.Error(res, "unavailable", http.StatusServiceUnavailable)
+		}))
+		t.Cleanup(server.Close)
+
+		if _, err := NewVerifier(t.Context(), server.URL, []string{"EdDSA"}); err == nil {
+			t.Fatal("NewVerifier() accepted failed initial fetch")
+		}
+	})
+
+	t.Run("rejects malformed initial key set", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(res http.ResponseWriter, _ *http.Request) {
+			_, _ = res.Write([]byte(`not-json`))
+		}))
+		t.Cleanup(server.Close)
+
+		if _, err := NewVerifier(t.Context(), server.URL, []string{"EdDSA"}); err == nil {
+			t.Fatal("NewVerifier() accepted malformed initial key set")
+		}
+	})
+}
 
 func TestNewVerifierRejectsInvalidConfig(t *testing.T) {
 	tests := []struct {

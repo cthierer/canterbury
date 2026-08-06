@@ -2,11 +2,16 @@ package healthcli
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/cthierer/canterbury/internal/domain/health"
 )
+
+// ErrHealthcheckFailed indicates that the target did not report serving.
+var ErrHealthcheckFailed = errors.New("healthcheck failed")
 
 // HealthApplication defines the health use case queried by the CLI service.
 type HealthApplication interface {
@@ -44,4 +49,21 @@ func (service *HealthService) Serving(ctx context.Context) bool {
 	}
 
 	return result.Status == health.StatusServing
+}
+
+// Check performs one bounded healthcheck and succeeds only when the target is
+// serving.
+func (service *HealthService) Check(ctx context.Context, timeout time.Duration) error {
+	if timeout <= 0 {
+		return fmt.Errorf("healthcheck timeout must be positive")
+	}
+
+	healthcheckCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+
+	if !service.Serving(healthcheckCtx) {
+		return ErrHealthcheckFailed
+	}
+
+	return nil
 }

@@ -55,8 +55,18 @@ forwards the assertion.
 The MCP server's unauthenticated `/health/live` and `/health/ready` endpoints
 remain internal to the Compose network and are not included in the Pomerium
 routing policy. Internal deployment probes may call them directly without
-weakening bearer enforcement on `/mcp`. Liveness reflects only the MCP process
-lifecycle; readiness also requires the vault service to report serving.
+weakening bearer enforcement on `/mcp`. Liveness is the container's local
+operational-health signal: it proves MCP initialization and listener response
+without contacting the vault. The image deliberately uses that signal so a
+Pomerium or vault outage does not cascade into MCP container health. Readiness
+also requires the vault service to report serving and is available for explicit
+end-to-end deployment or traffic-admission checks.
+
+The vault container checks its internal Connect/gRPC readiness service directly
+with `vault-service healthcheck`; it does not send the probe through Pomerium.
+The named vault service becomes serving only after its vault, audit recorder,
+authorization mapping, and initial Pomerium JWKS key set initialize. Neither
+container healthcheck requires credentials or creates vault or audit activity.
 
 The route is an ordinary protected HTTP route, not Pomerium's experimental
 MCP-native OAuth mode. MCP clients must send a bearer credential that the
