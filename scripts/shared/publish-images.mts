@@ -88,6 +88,20 @@ export const tagsForRevision = (revision: string, tagsAtRevision: string[]): str
 	return [`sha-${revision}`, ...releaseTags]
 }
 
+export const versionForTags = (tags: string[]): string => {
+	const releaseTag = tags.find(isReleaseTag)
+	if (releaseTag !== undefined) {
+		return releaseTag
+	}
+
+	const shaTag = tags.find(tag => /^sha-[0-9a-f]{40}$/.test(tag))
+	if (shaTag === undefined) {
+		throw new Error('image tags must include an immutable full SHA tag')
+	}
+
+	return shaTag
+}
+
 export const assertCleanTree = (status: string): void => {
 	if (status !== '') {
 		throw new Error('MODE=push requires a clean working tree')
@@ -147,19 +161,26 @@ export const resolvePublishPlan = (
 	}
 }
 
-export const parseBuildMetadata = (contents: string): string => {
+export const parseBuildMetadata = (contents: string, image: ImageName): string => {
 	const metadata: unknown = JSON.parse(contents)
 	if (typeof metadata !== 'object' || metadata === null || Array.isArray(metadata)) {
-		throw new Error('Buildx metadata does not contain a valid containerimage.digest')
+		throw new Error(`Buildx metadata does not contain target ${JSON.stringify(image)}`)
 	}
 
-	const digest = (metadata as Record<string, unknown>)['containerimage.digest']
+	const target = (metadata as Record<string, unknown>)[image]
+	if (typeof target !== 'object' || target === null || Array.isArray(target)) {
+		throw new Error(`Buildx metadata does not contain target ${JSON.stringify(image)}`)
+	}
+
+	const digest = (target as Record<string, unknown>)['containerimage.digest']
 	if (
-		!Object.hasOwn(metadata, 'containerimage.digest') ||
+		!Object.hasOwn(target, 'containerimage.digest') ||
 		typeof digest !== 'string' ||
 		!/^sha256:[0-9a-f]{64}$/.test(digest)
 	) {
-		throw new Error('Buildx metadata does not contain a valid containerimage.digest')
+		throw new Error(
+			`Buildx metadata target ${JSON.stringify(image)} has an invalid containerimage.digest`,
+		)
 	}
 
 	return digest
@@ -175,19 +196,20 @@ const bakeCommand = (
 	image: ImageName,
 	metadataFile: string,
 ): { args: string[]; command: string } => {
+	const version = versionForTags(plan.tags)
 	const args = [
 		'buildx',
 		'bake',
 		'--file',
 		'docker-bake.hcl',
 		'--set',
-		`${image}.args.CANTERBURY_VERSION=${plan.tags[0]}`,
+		`${image}.args.CANTERBURY_VERSION=${version}`,
 		'--set',
 		`${image}.args.CANTERBURY_REVISION=${plan.revision}`,
 		'--set',
 		`${image}.args.CANTERBURY_CREATED=${plan.created}`,
 		'--set',
-		`${image}.labels.org.opencontainers.image.version=${plan.tags[0]}`,
+		`${image}.labels.org.opencontainers.image.version=${version}`,
 		'--set',
 		`${image}.labels.org.opencontainers.image.revision=${plan.revision}`,
 		'--set',
@@ -212,6 +234,7 @@ const bakeCommand = (
 }
 
 const writeDigestOutputs = (
+	revision: string,
 	digestFile: string,
 	digests: Partial<Record<ImageName, string>>,
 ): void => {
@@ -222,9 +245,12 @@ const writeDigestOutputs = (
 	console.log(`Immutable image digests:\n${lines.join('\n')}`)
 
 	if (process.env.GITHUB_OUTPUT !== undefined) {
-		const output = Object.entries(digests)
-			.map(([image, digest]) => `${image.replace('-', '_')}_digest=${digest}`)
-			.join('\n')
+		const output = [
+			`revision=${revision}`,
+			...Object.entries(digests).map(
+				([image, digest]) => `${image.replace('-', '_')}_digest=${digest}`,
+			),
+		].join('\n')
 		writeFileSync(process.env.GITHUB_OUTPUT, `${output}\n`, { flag: 'a' })
 	}
 
@@ -259,11 +285,11 @@ export const publishImages = (plan: PublishPlan, run: CommandRunner = runCommand
 		run('docker', args)
 
 		if (plan.mode === 'push') {
-			digests[image] = parseBuildMetadata(readFileSync(metadataFile, 'utf8'))
+			digests[image] = parseBuildMetadata(readFileSync(metadataFile, 'utf8'), image)
 		}
 	}
 
 	if (plan.mode === 'push') {
-		writeDigestOutputs(plan.digestFile, digests)
+		writeDigestOutputs(plan.revision, plan.digestFile, digests)
 	}
 }

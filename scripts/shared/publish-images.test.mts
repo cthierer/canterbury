@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import test from 'node:test'
 
 import {
@@ -8,9 +11,11 @@ import {
 	parseBuildMetadata,
 	parseImageSelection,
 	parsePublishMode,
+	publishImages,
 	redactCommand,
 	resolvePublishPlan,
 	tagsForRevision,
+	versionForTags,
 } from './publish-images.mts'
 
 const revision = '0123456789abcdef0123456789abcdef01234567'
@@ -49,6 +54,12 @@ test('creates immutable SHA tags and exact release tags only', () => {
 	assert.deepEqual(tagsForRevision(revision, ['v1.2.3']), [`sha-${revision}`, 'v1.2.3'])
 	assert.deepEqual(tagsForRevision(revision, ['latest', 'v1']), [`sha-${revision}`])
 	assert.throws(() => tagsForRevision(revision, ['v1.2.3', 'v1.2.4']))
+})
+
+test('uses an exact release tag as the OCI and runtime version when available', () => {
+	assert.equal(versionForTags([`sha-${revision}`]), `sha-${revision}`)
+	assert.equal(versionForTags([`sha-${revision}`, 'v1.2.3-rc.1']), 'v1.2.3-rc.1')
+	assert.throws(() => versionForTags([]))
 })
 
 test('requires a clean tree for pushes', () => {
@@ -90,13 +101,77 @@ test('rejects a release ref that is not an actual tag at the revision', () => {
 	assert.throws(() => resolvePublishPlan({ image: 'all', mode: 'build', ref: 'v1.2.3' }, run))
 })
 
-test('parses Buildx manifest digests only', () => {
-	assert.equal(
-		parseBuildMetadata(`{"containerimage.digest":"sha256:${'a'.repeat(64)}"}`),
-		`sha256:${'a'.repeat(64)}`,
+test('parses the selected target digest from Buildx metadata', () => {
+	const digest = `sha256:${'a'.repeat(64)}`
+	const metadata = JSON.stringify({
+		'mcp-server': {
+			'buildx.build.ref': 'default/default/example',
+			'containerimage.digest': digest,
+		},
+	})
+	assert.equal(parseBuildMetadata(metadata, 'mcp-server'), digest)
+	assert.throws(() => parseBuildMetadata(metadata, 'sync'))
+	assert.throws(() => parseBuildMetadata('{}', 'mcp-server'))
+	assert.throws(() =>
+		parseBuildMetadata(JSON.stringify({ 'containerimage.digest': digest }), 'mcp-server'),
 	)
-	assert.throws(() => parseBuildMetadata('{}'))
-	assert.throws(() => parseBuildMetadata('{"containerimage.digest":"sha256:not-a-digest"}'))
+	assert.throws(() =>
+		parseBuildMetadata(
+			JSON.stringify({ 'mcp-server': { 'containerimage.digest': 'sha256:not-a-digest' } }),
+			'mcp-server',
+		),
+	)
+})
+
+test('uses release versions in Bake arguments and emits resolved GitHub outputs', () => {
+	const directory = mkdtempSync(join(tmpdir(), 'canterbury-publish-images-'))
+	const digestFile = join(directory, 'image-digests.json')
+	const metadataFile = `${digestFile}.mcp-server.metadata.json`
+	const githubOutput = join(directory, 'github-output')
+	const digest = `sha256:${'b'.repeat(64)}`
+	const previousGitHubOutput = process.env.GITHUB_OUTPUT
+	const calls: string[][] = []
+
+	try {
+		writeFileSync(
+			metadataFile,
+			JSON.stringify({ 'mcp-server': { 'containerimage.digest': digest } }),
+		)
+		process.env.GITHUB_OUTPUT = githubOutput
+
+		publishImages(
+			{
+				created: '2026-08-06T12:34:56+00:00',
+				digestFile,
+				images: ['mcp-server'],
+				mode: 'push',
+				revision,
+				tags: [`sha-${revision}`, 'v1.2.3'],
+			},
+			(_command, args) => {
+				calls.push(args)
+				return ''
+			},
+		)
+
+		assert.equal(calls[0].includes('mcp-server.args.CANTERBURY_VERSION=v1.2.3'), true)
+		assert.equal(
+			calls[0].includes('mcp-server.labels.org.opencontainers.image.version=v1.2.3'),
+			true,
+		)
+		assert.deepEqual(JSON.parse(readFileSync(digestFile, 'utf8')), { 'mcp-server': digest })
+		assert.equal(
+			readFileSync(githubOutput, 'utf8'),
+			`revision=${revision}\nmcp_server_digest=${digest}\n`,
+		)
+	} finally {
+		if (previousGitHubOutput === undefined) {
+			delete process.env.GITHUB_OUTPUT
+		} else {
+			process.env.GITHUB_OUTPUT = previousGitHubOutput
+		}
+		rmSync(directory, { force: true, recursive: true })
+	}
 })
 
 test('redacts credential-like command arguments before display', () => {

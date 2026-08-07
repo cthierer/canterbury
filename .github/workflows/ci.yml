@@ -162,6 +162,11 @@ jobs:
     needs: check
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    outputs:
+      revision: ${{ steps.publish.outputs.revision }}
+      mcp_server_digest: ${{ steps.publish.outputs.mcp_server_digest }}
+      vault_service_digest: ${{ steps.publish.outputs.vault_service_digest }}
+      sync_digest: ${{ steps.publish.outputs.sync_digest }}
     permissions:
       contents: read
       packages: write
@@ -202,6 +207,7 @@ jobs:
         run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
 
       - name: Publish immutable images
+        id: publish
         env:
           IMAGE_DIGESTS_FILE: .cache/image-digests.json
           PUBLISH_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.image || 'all' }}
@@ -212,5 +218,6 @@ jobs:
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           if-no-files-found: error
-          name: image-digests-${{ github.sha }}
+          include-hidden-files: true
+          name: image-digests-${{ steps.publish.outputs.revision }}
           path: .cache/image-digests.json
