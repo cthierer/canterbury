@@ -288,6 +288,7 @@ export const publishImages = (plan: PublishPlan, run: CommandRunner = runCommand
 	}
 
 	const digests: Partial<Record<ImageName, string>> = {}
+	mkdirSync(dirname(plan.digestFile), { recursive: true })
 	for (const image of plan.images) {
 		const metadataFile = `${plan.digestFile}.${image}.metadata.json`
 		const { args, command } = bakeCommand(plan, image, metadataFile)

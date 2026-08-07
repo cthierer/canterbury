@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import test from 'node:test'
@@ -197,6 +197,31 @@ test('uses release versions in Bake arguments and emits resolved GitHub outputs'
 		} else {
 			process.env.GITHUB_OUTPUT = previousGitHubOutput
 		}
+		rmSync(directory, { force: true, recursive: true })
+	}
+})
+
+test('creates the Buildx metadata directory before a build', () => {
+	const directory = mkdtempSync(join(tmpdir(), 'canterbury-publish-images-'))
+	const digestFile = join(directory, 'cache', 'image-digests.json')
+
+	try {
+		publishImages(
+			{
+				created: '2026-08-06T12:34:56+00:00',
+				digestFile,
+				images: ['sync'],
+				mode: 'build',
+				revision,
+				sourceDateEpoch: '1786019696',
+				tags: [`sha-${revision}`],
+			},
+			(_command, _args) => {
+				assert.equal(existsSync(join(directory, 'cache')), true)
+				return ''
+			},
+		)
+	} finally {
 		rmSync(directory, { force: true, recursive: true })
 	}
 })
