@@ -216,7 +216,7 @@ test('creates the Buildx metadata directory before a build', () => {
 				sourceDateEpoch: '1786019696',
 				tags: [`sha-${revision}`],
 			},
-			(_command, _args) => {
+			() => {
 				assert.equal(existsSync(join(directory, 'cache')), true)
 				return ''
 			},
