@@ -4,7 +4,29 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
   pull_request:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Exact main-reachable Git ref or full commit SHA to publish'
+        required: true
+        type: string
+      image:
+        description: 'Image package to publish'
+        required: true
+        default: all
+        type: choice
+        options:
+          - all
+          - mcp-server
+          - vault-service
+          - sync
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+  cancel-in-progress: true
 
 env:
   # Set to a non-zero integer to enforce a minimum coverage percentage.
@@ -14,25 +36,27 @@ jobs:
   check:
     name: Quality Checks
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
           go-version-file: go.mod
           cache: false
 
       - name: Set up Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version-file: .nvmrc
           cache: npm
 
       - name: Cache build artifacts
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
         with:
           path: .cache
           key: ${{ runner.os }}-cache-${{ hashFiles('go.sum', 'package-lock.json', 'sync/package-lock.json') }}
@@ -83,3 +107,110 @@ jobs:
 
       - name: Lint JavaScript
         run: npm --prefix sync run check:code
+
+      - name: Check TypeScript and script tests
+        run: npm run typecheck && npm run test:scripts
+
+  build-images:
+    name: Build deployment images
+    needs: check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Build all images without registry access
+        run: MODE=build REF="$GITHUB_SHA" make publish-images
+
+      - name: Inspect image runtime and OCI configuration
+        run: |
+          inspect_image() {
+            image="$1"
+            test "$(docker image inspect "$image" --format '{{.Os}}/{{.Architecture}}')" = 'linux/amd64'
+            user=$(docker image inspect "$image" --format '{{.Config.User}}')
+            test -n "$user"
+            test "$user" != 'root'
+            test "$(docker image inspect "$image" --format '{{json .Config.Entrypoint}}')" != 'null'
+            test "$(docker image inspect "$image" --format '{{json .Config.Healthcheck}}')" != 'null'
+            test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.source"}}')" = 'https://github.com/cthierer/canterbury'
+            test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$GITHUB_SHA"
+            test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "sha-$GITHUB_SHA"
+            test -n "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.created"}}')"
+            test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.licenses"}}')" = 'MIT'
+            test -n "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.title"}}')"
+            test -n "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.description"}}')"
+          }
+          inspect_image "ghcr.io/cthierer/canterbury-mcp-server:sha-$GITHUB_SHA"
+          inspect_image "ghcr.io/cthierer/canterbury-vault-service:sha-$GITHUB_SHA"
+          inspect_image "ghcr.io/cthierer/canterbury-sync:sha-$GITHUB_SHA"
+
+  publish-images:
+    name: Publish deployment images
+    needs: check
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout requested revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+
+      - name: Validate requested revision is reachable from main
+        env:
+          PUBLISH_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+        run: |
+          git fetch --no-tags origin main
+          commit=$(git rev-parse --verify "${PUBLISH_REF}^{commit}")
+          git merge-base --is-ancestor "$commit" origin/main
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
+
+      - name: Validate publish inputs before authentication
+        env:
+          PUBLISH_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.image || 'all' }}
+          PUBLISH_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+        run: MODE=dry-run IMAGE="$PUBLISH_IMAGE" REF="$PUBLISH_REF" make publish-images
+
+      - name: Authenticate to GitHub Container Registry
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: printf '%s' "$GHCR_TOKEN" | docker login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Publish immutable images
+        env:
+          IMAGE_DIGESTS_FILE: .cache/image-digests.json
+          PUBLISH_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.image || 'all' }}
+          PUBLISH_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+        run: MODE=push IMAGE="$PUBLISH_IMAGE" REF="$PUBLISH_REF" make publish-images
+
+      - name: Upload immutable image digests
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          if-no-files-found: error
+          name: image-digests-${{ github.sha }}
+          path: .cache/image-digests.json
