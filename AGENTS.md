@@ -24,8 +24,11 @@ The sync worker lives in `sync/` and:
 - Uses `obsidian-headless` through the `ob` CLI.
 - Writes an Obsidian auth token to the location expected by `ob`.
 - Runs `ob sync-status` and performs `ob sync-setup` only when needed.
-- Runs `ob sync --continuous`.
-- Forwards shutdown signals to the child `ob` process.
+- Completes a one-time `ob sync` before running `ob sync --continuous`.
+- Reports ready only after the initial sync completes and the continuous child
+  starts; reports liveness and readiness through its own credential-free CLI.
+- Forwards shutdown signals to the child `ob` process and force-kills a child
+  that exceeds the bounded cleanup period.
 
 The default Docker Compose setup uses a Docker-managed named volume:
 

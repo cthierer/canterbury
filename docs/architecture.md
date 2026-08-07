@@ -206,18 +206,49 @@ Supporting packages in `internal/app/`:
 - `clock` provides a `Clock` abstraction and a system-time implementation used
   for audit timestamps.
 - `devauth` implements local development token minting.
+- `health` resolves ordered service and dependency readiness checks, with
+  `NOT_SERVING` taking precedence and short-circuiting remaining checks.
 - `idgen` provides unique ID generation (ULID) used for audit event IDs.
 
 `internal/adapters/auditfs` holds the filesystem append-only audit log
 implementation. Future write operations must not commit successfully without an
 independent audit record.
 
+`internal/adapters/healthgrpc` translates the vault service's Connect/gRPC
+health status into Canterbury's health domain. `internal/adapters/healthstatic`
+holds the MCP process lifecycle state and changes it to not serving before
+graceful shutdown.
+
+`internal/cliapp` provides the shared `serve` and `healthcheck` command
+dispatcher for the production MCP and vault binaries. `internal/interfaces/healthcli`
+owns their common healthcheck flags, bounded execution, and `SERVING` decision;
+the binaries retain protocol-specific URL validation and select either the HTTP
+or Connect/gRPC checker. The development auth CLI remains independent.
+
 `internal/interfaces/vaultrpc` is the vault RPC interface.
 `internal/interfaces/mcphttp` adapts the generated MCP tools to stateless HTTP,
 enforces the bearer-header contract, and forwards request identity and
-correlation metadata through a Connect interceptor. `cmd/mcp-server` retains
-configuration, client construction, and HTTP lifecycle orchestration. This
-keeps the MCP process away from vault files and preserves the vault service's
-authentication, authorization, and mandatory audit boundary. A future
-`internal/interfaces/rest` should likewise expose protocol adapters only rather
-than reading vault files directly.
+correlation metadata through a Connect interceptor.
+`internal/interfaces/healthhttp` exposes separate liveness and readiness
+statuses without authentication or diagnostic metadata. Liveness is the MCP
+container's local operational-health signal: because the endpoint is reachable
+only after configuration and handler initialization, it covers the listener
+and local lifecycle while deliberately excluding downstream availability.
+Readiness is the optional dependency-inclusive signal that aggregates local MCP
+health with vault Connect/gRPC health. The MCP image probes liveness so an
+external vault outage cannot trigger a cascading unhealthy state; callers may
+choose readiness when their own traffic or deployment decision requires the
+vault. `cmd/mcp-server` owns HTTP routing, configuration, client construction,
+and lifecycle orchestration. This keeps the MCP process away from vault files
+and preserves the vault service's authentication, authorization, and mandatory
+audit boundary. `internal/protocol/healthhttp` owns the small JSON response
+contract shared by the health client and server adapters, while neither adapter
+depends on the other. A future `internal/interfaces/rest` should likewise
+expose protocol adapters only rather than reading vault files directly.
+
+The vault service registers its named Connect/gRPC health status as
+`NOT_SERVING`, constructs the vault repository, audit recorder, authorization
+mapping, and JWKS verifier, and changes the status to `SERVING` only immediately
+before listening. The initial JWKS fetch is mandatory. Probes are static and
+side-effect free after startup; they do not read vault content, write audit
+events, or trigger JWKS refreshes.

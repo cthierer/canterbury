@@ -1,5 +1,8 @@
 FROM golang:1.26-bookworm AS build
 
+ARG CANTERBURY_VERSION=dev
+ARG CANTERBURY_REVISION=unknown
+
 WORKDIR /src
 
 COPY go.mod go.sum ./
@@ -9,7 +12,9 @@ COPY cmd ./cmd
 COPY gen ./gen
 COPY internal ./internal
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/mcp-server ./cmd/mcp-server
+RUN CGO_ENABLED=0 GOOS=linux go build \
+	-ldflags "-X main.buildVersion=${CANTERBURY_VERSION} -X main.buildRevision=${CANTERBURY_REVISION}" \
+	-o /out/mcp-server ./cmd/mcp-server
 
 FROM debian:bookworm-slim
 
@@ -22,6 +27,11 @@ COPY --from=build /out/mcp-server /usr/local/bin/mcp-server
 
 EXPOSE 50053
 
+ENV MCP_SERVER_HEALTHCHECK_URL=http://127.0.0.1:50053/health/live
+
 USER canterbury
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+	CMD ["/usr/local/bin/mcp-server", "healthcheck"]
 
 ENTRYPOINT ["mcp-server"]

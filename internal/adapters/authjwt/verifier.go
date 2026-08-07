@@ -38,7 +38,12 @@ func NewVerifier(ctx context.Context, jwksURL string, allowedMethods []string) (
 		return nil, fmt.Errorf("at least 1 method is required")
 	}
 
-	keyFunc, err := keyfunc.NewDefaultCtx(ctx, []string{jwksURL})
+	// A verifier without an initial key set cannot authenticate requests, so do
+	// not let the service advertise readiness and defer the failure to runtime.
+	allowInitialFetchFailure := false
+	keyFunc, err := keyfunc.NewDefaultOverrideCtx(ctx, []string{jwksURL}, keyfunc.Override{
+		NoErrorReturnFirstHTTPReq: &allowInitialFetchFailure,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("build JWKS key function: %w", err)
 	}

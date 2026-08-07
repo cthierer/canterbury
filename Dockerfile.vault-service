@@ -1,5 +1,8 @@
 FROM golang:1.26-bookworm AS build
 
+ARG CANTERBURY_VERSION=dev
+ARG CANTERBURY_REVISION=unknown
+
 WORKDIR /src
 
 COPY go.mod go.sum ./
@@ -10,7 +13,9 @@ COPY cmd ./cmd
 COPY gen ./gen
 COPY internal ./internal
 
-RUN CGO_ENABLED=0 GOOS=linux go build -o /out/vault-service ./cmd/vault-service
+RUN CGO_ENABLED=0 GOOS=linux go build \
+	-ldflags "-X main.buildVersion=${CANTERBURY_VERSION} -X main.buildRevision=${CANTERBURY_REVISION}" \
+	-o /out/vault-service ./cmd/vault-service
 
 FROM debian:bookworm-slim
 
@@ -26,6 +31,11 @@ RUN useradd -m -u 10001 canterbury \
 
 EXPOSE 50051
 
+ENV VAULT_SERVICE_HEALTHCHECK_URL=http://127.0.0.1:50051
+
 USER canterbury
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
+	CMD ["/usr/local/bin/vault-service", "healthcheck"]
 
 ENTRYPOINT ["vault-service"]

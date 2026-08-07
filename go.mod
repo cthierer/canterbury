@@ -4,7 +4,7 @@ go 1.26.1
 
 require (
 	connectrpc.com/connect v1.19.1
-	connectrpc.com/grpchealth v1.4.0
+	connectrpc.com/grpchealth v1.5.0
 	connectrpc.com/grpcreflect v1.3.0
 	github.com/BurntSushi/toml v1.6.0
 	github.com/MicahParks/keyfunc/v3 v3.8.0

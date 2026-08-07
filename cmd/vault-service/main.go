@@ -6,8 +6,10 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"strings"
@@ -22,17 +24,21 @@ import (
 	"github.com/cthierer/canterbury/internal/adapters/auditfs"
 	"github.com/cthierer/canterbury/internal/adapters/authfs"
 	"github.com/cthierer/canterbury/internal/adapters/authjwt"
+	"github.com/cthierer/canterbury/internal/adapters/healthgrpc"
 	"github.com/cthierer/canterbury/internal/adapters/vaultfs"
 	"github.com/cthierer/canterbury/internal/app/auditlog"
 	appauth "github.com/cthierer/canterbury/internal/app/auth"
+	apphealth "github.com/cthierer/canterbury/internal/app/health"
 	vaultapp "github.com/cthierer/canterbury/internal/app/vault"
+	"github.com/cthierer/canterbury/internal/cliapp"
+	"github.com/cthierer/canterbury/internal/interfaces/healthcli"
 	vaultconnect "github.com/cthierer/canterbury/internal/interfaces/vaultrpc"
 	"github.com/joho/godotenv"
 	"github.com/kelseyhightower/envconfig"
 )
 
-type config struct {
-	Addr  string `default:"127.0.0.1:50051"`
+type serveConfig struct {
+	Addr  string
 	Root  string `required:"true"`
 	Audit struct {
 		Root     string  `required:"true"`
@@ -49,62 +55,159 @@ type config struct {
 	}
 }
 
+type healthcheckConfig struct {
+	URL     string        `envconfig:"HEALTHCHECK_URL"`
+	Timeout time.Duration `envconfig:"HEALTHCHECK_TIMEOUT"`
+}
+
+type vaultServer struct {
+	http   *http.Server
+	health *grpchealth.StaticChecker
+}
+
 const (
-	shutdownGracePeriod = 10 * time.Second
-	readHeaderTimeout   = 5 * time.Second
+	shutdownGracePeriod    = 10 * time.Second
+	readHeaderTimeout      = 5 * time.Second
+	defaultVaultServerAddr = "127.0.0.1:50051"
+	defaultHealthTimeout   = 2 * time.Second
+)
+
+var (
+	buildVersion  = "dev"
+	buildRevision = "unknown"
 )
 
 func main() {
-	if err := run(); err != nil {
-		slog.ErrorContext(context.Background(), "vault service stopped", "err", err)
-		os.Exit(1)
+	ctx := context.Background()
+	exitCode := run(ctx, os.Args[1:], os.Stdout)
+	os.Exit(exitCode)
+}
+
+func run(ctx context.Context, args []string, output io.Writer) int {
+	app := cliapp.Application{
+		Name:           "vault-service",
+		DefaultCommand: "serve",
+		Prepare:        loadLocalEnv,
+		Commands: []cliapp.Command{
+			{Name: "serve", Summary: "Start the vault service", Run: runServeCommand},
+			{Name: "healthcheck", Summary: "Determine if a vault service is healthy", Run: runHealthcheckCommand},
+		},
+		Footer: `Run "vault-service healthcheck --help" for healthcheck flags.`,
+	}
+
+	return app.Run(ctx, args, output)
+}
+
+func runServeCommand(ctx context.Context, args []string, _ io.Writer) error {
+	cfg, err := loadServeConfig(args)
+	if err != nil {
+		return fmt.Errorf("load vault service configuration: %w", err)
+	}
+
+	if err := serve(ctx, cfg); err != nil {
+		return fmt.Errorf("vault service stopped: %w", err)
+	}
+
+	return nil
+}
+
+func runHealthcheckCommand(ctx context.Context, args []string, output io.Writer) error {
+	cfg, err := loadHealthcheckConfig(args, output)
+	if err != nil {
+		return fmt.Errorf("load healthcheck configuration: %w", err)
+	}
+
+	return healthcheck(ctx, cfg)
+}
+
+func serve(ctx context.Context, cfg serveConfig) error {
+	ctx, stop := signal.NotifyContext(ctx, os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	server, err := newVaultServer(ctx, cfg)
+	if err != nil {
+		return err
+	}
+
+	server.setServing()
+	defer server.setNotServing()
+
+	errs := make(chan error, 1)
+	go func() {
+		slog.InfoContext(
+			ctx,
+			"starting vault service",
+			"address", cfg.Addr,
+			"version", buildVersion,
+			"revision", buildRevision,
+		)
+		errs <- server.http.ListenAndServe()
+	}()
+
+	select {
+	case <-ctx.Done():
+		server.setNotServing()
+
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGracePeriod)
+		defer cancel()
+
+		if err := server.http.Shutdown(shutdownCtx); err != nil {
+			return fmt.Errorf("shut down vault service: %w", err)
+		}
+
+		return nil
+	case err := <-errs:
+		if errors.Is(err, http.ErrServerClosed) {
+			return nil
+		}
+
+		return fmt.Errorf("serve vault HTTP: %w", err)
 	}
 }
 
-func run() error {
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+func (server *vaultServer) setServing() {
+	server.health.SetStatus(vaultv1connect.VaultServiceName, grpchealth.StatusServing)
+}
 
-	if err := loadLocalEnv(); err != nil {
-		return err
-	}
+func (server *vaultServer) setNotServing() {
+	server.health.SetStatus(vaultv1connect.VaultServiceName, grpchealth.StatusNotServing)
+}
 
-	var config config
-	if err := envconfig.Process("vault_service", &config); err != nil {
-		return err
-	}
+func newVaultServer(ctx context.Context, cfg serveConfig) (*vaultServer, error) {
+	checker := grpchealth.NewStaticChecker()
+	checker.SetStatus(vaultv1connect.VaultServiceName, grpchealth.StatusNotServing)
 
 	mux := http.NewServeMux()
 
-	vaultRepository, err := vaultfs.NewRepository(config.Root)
+	vaultRepository, err := vaultfs.NewRepository(cfg.Root)
 	if err != nil {
-		return fmt.Errorf("initialize vault repository: %w", err)
+		return nil, fmt.Errorf("initialize vault repository: %w", err)
 	}
 
 	auditOptions := []auditfs.RecorderOption{}
-	auditWriterID := config.Audit.WriterID
+	auditWriterID := cfg.Audit.WriterID
 	if auditWriterID != "" {
 		auditOptions = append(auditOptions, auditfs.WithWriterID(auditWriterID))
 	}
 
-	auditRecorder, err := auditfs.NewRecorder(config.Audit.Root, auditOptions...)
+	auditRecorder, err := auditfs.NewRecorder(cfg.Audit.Root, auditOptions...)
 	if err != nil {
-		return fmt.Errorf("initialize audit recorder: %w", err)
+		return nil, fmt.Errorf("initialize audit recorder: %w", err)
 	}
 
 	auditLog, err := auditlog.NewService(auditRecorder)
 	if err != nil {
-		return fmt.Errorf("initialize audit log: %w", err)
+		return nil, fmt.Errorf("initialize audit log: %w", err)
 	}
 
-	authMappingLoader, err := authfs.NewLoader(config.Auth.MappingFile)
+	authMappingLoader, err := authfs.NewLoader(cfg.Auth.MappingFile)
 	if err != nil {
-		return fmt.Errorf("initialize auth mapping loader: %w", err)
+		return nil, fmt.Errorf("initialize auth mapping loader: %w", err)
 	}
 
 	scopeMapper, err := appauth.NewScopeMapper(ctx, authMappingLoader)
 	if err != nil {
-		return fmt.Errorf("initialize auth scope mapper: %w", err)
+		return nil, fmt.Errorf("initialize auth scope mapper: %w", err)
 	}
 	slog.InfoContext(
 		ctx,
@@ -115,34 +218,34 @@ func run() error {
 		scopeMapper.MappingChecksum(),
 	)
 
-	tokenVerifier, err := authjwt.NewVerifier(ctx, config.Auth.JWKS.URL, []string{"EdDSA", "ES256"})
+	tokenVerifier, err := authjwt.NewVerifier(ctx, cfg.Auth.JWKS.URL, []string{"EdDSA", "ES256"})
 	if err != nil {
-		return fmt.Errorf("initialize auth JWT verifier: %w", err)
+		return nil, fmt.Errorf("initialize auth JWT verifier: %w", err)
 	}
 
-	authenticator, err := appauth.NewAuthenticator(config.Auth.Issuer, config.Auth.Audience, scopeMapper, tokenVerifier)
+	authenticator, err := appauth.NewAuthenticator(cfg.Auth.Issuer, cfg.Auth.Audience, scopeMapper, tokenVerifier)
 	if err != nil {
-		return fmt.Errorf("initialize auth application service: %w", err)
+		return nil, fmt.Errorf("initialize auth application service: %w", err)
 	}
 
 	authInterceptor, err := vaultconnect.NewAuthContextInterceptor(authenticator, auditLog)
 	if err != nil {
-		return fmt.Errorf("initialize auth context interceptor: %w", err)
+		return nil, fmt.Errorf("initialize auth context interceptor: %w", err)
 	}
 
 	vaultApplication, err := vaultapp.NewService(vaultRepository, auditLog)
 	if err != nil {
-		return fmt.Errorf("initialize vault application service: %w", err)
+		return nil, fmt.Errorf("initialize vault application service: %w", err)
 	}
 
 	vaultService, err := vaultconnect.NewVaultServiceHandler(vaultApplication)
 	if err != nil {
-		return fmt.Errorf("initialize vault connect service: %w", err)
+		return nil, fmt.Errorf("initialize vault connect service: %w", err)
 	}
 
-	auditInterceptor, err := vaultconnect.NewAuditContextInterceptor(config.Audit.HMACKey)
+	auditInterceptor, err := vaultconnect.NewAuditContextInterceptor(cfg.Audit.HMACKey)
 	if err != nil {
-		return fmt.Errorf("initialize audit context interceptor: %w", err)
+		return nil, fmt.Errorf("initialize audit context interceptor: %w", err)
 	}
 
 	vaultPath, vaultHandler := vaultv1connect.NewVaultServiceHandler(
@@ -151,7 +254,6 @@ func run() error {
 	)
 	mux.Handle(vaultPath, vaultHandler)
 
-	checker := grpchealth.NewStaticChecker(vaultv1connect.VaultServiceName)
 	healthPath, healthHandler := grpchealth.NewHandler(checker)
 	mux.Handle(healthPath, healthHandler)
 
@@ -164,36 +266,114 @@ func run() error {
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
-	server := &http.Server{
-		Addr:              config.Addr,
+	httpServer := &http.Server{
+		Addr:              cfg.Addr,
 		Handler:           mux,
 		ReadHeaderTimeout: readHeaderTimeout,
 		Protocols:         protocols,
 	}
 
-	errs := make(chan error, 1)
-	go func() {
-		slog.InfoContext(ctx, "starting vault service", "address", config.Addr)
-		errs <- server.ListenAndServe()
-	}()
+	return &vaultServer{http: httpServer, health: checker}, nil
+}
 
-	select {
-	case <-ctx.Done():
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGracePeriod)
-		defer cancel()
-
-		if err := server.Shutdown(shutdownCtx); err != nil {
-			return err
-		}
-
-		return nil
-	case err := <-errs:
-		if errors.Is(err, http.ErrServerClosed) {
-			return nil
-		}
-
-		return err
+func healthcheck(ctx context.Context, cfg healthcheckConfig) error {
+	client := &http.Client{Timeout: cfg.Timeout}
+	vaultHealth := grpchealth.NewClient(client, cfg.URL)
+	vaultHealthChecker, err := healthgrpc.NewChecker(vaultHealth, vaultv1connect.VaultServiceName)
+	if err != nil {
+		return fmt.Errorf("initialize vault health checker: %w", err)
 	}
+
+	healthApp, err := apphealth.NewService(vaultHealthChecker)
+	if err != nil {
+		return fmt.Errorf("initialize health application: %w", err)
+	}
+
+	healthService, err := healthcli.NewService(healthApp)
+	if err != nil {
+		return fmt.Errorf("initialize health service: %w", err)
+	}
+
+	return healthService.Check(ctx, cfg.Timeout)
+}
+
+func loadServeConfig(args []string) (serveConfig, error) {
+	if len(args) > 0 {
+		return serveConfig{}, fmt.Errorf("unexpected serve argument %q", args[0])
+	}
+
+	cfg := serveConfig{Addr: defaultVaultServerAddr}
+	if err := envconfig.Process("vault_service", &cfg); err != nil {
+		return serveConfig{}, err
+	}
+	cfg.Addr = strings.TrimSpace(cfg.Addr)
+	if cfg.Addr == "" {
+		return serveConfig{}, fmt.Errorf("vault service address must not be empty")
+	}
+
+	return cfg, nil
+}
+
+func loadHealthcheckConfig(args []string, output io.Writer) (healthcheckConfig, error) {
+	address := struct{ Addr string }{Addr: defaultVaultServerAddr}
+	if err := envconfig.Process("vault_service", &address); err != nil {
+		return healthcheckConfig{}, err
+	}
+
+	addr := strings.TrimSpace(address.Addr)
+	if addr == "" {
+		return healthcheckConfig{}, fmt.Errorf("vault service address must not be empty")
+	}
+
+	cfg := healthcheckConfig{URL: "http://" + addr, Timeout: defaultHealthTimeout}
+	defaultURL := cfg.URL
+	if err := envconfig.Process("vault_service", &cfg); err != nil {
+		return healthcheckConfig{}, err
+	}
+	if strings.TrimSpace(cfg.URL) == "" {
+		cfg.URL = defaultURL
+	}
+
+	parsed, err := healthcli.ParseConfig(
+		args,
+		output,
+		healthcli.Config{URL: cfg.URL, Timeout: cfg.Timeout},
+		healthcli.ConfigOptions{
+			CommandName:  "vault-service healthcheck",
+			URLUsage:     "Connect server base URL",
+			NormalizeURL: normalizeBaseURL,
+		},
+	)
+	if err != nil {
+		return healthcheckConfig{}, err
+	}
+
+	return healthcheckConfig{URL: parsed.URL, Timeout: parsed.Timeout}, nil
+}
+
+func normalizeBaseURL(value string) (string, error) {
+	parsed, err := url.Parse(strings.TrimSpace(value))
+	if err != nil {
+		return "", err
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return "", fmt.Errorf("scheme must be http or https")
+	}
+	if parsed.Host == "" {
+		return "", fmt.Errorf("host is required")
+	}
+	if parsed.User != nil {
+		return "", fmt.Errorf("user information is not allowed")
+	}
+	if parsed.RawQuery != "" || parsed.Fragment != "" {
+		return "", fmt.Errorf("query and fragment are not allowed")
+	}
+	if parsed.Path != "" && parsed.Path != "/" {
+		return "", fmt.Errorf("path must be empty")
+	}
+
+	parsed.Path = ""
+	return parsed.String(), nil
 }
 
 func loadLocalEnv() error {
