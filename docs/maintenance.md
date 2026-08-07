@@ -1,8 +1,32 @@
 # Dependency Maintenance
 
 This guide covers Canterbury's pinned code generators, MCP dependencies, and
-vendored protobuf inputs. Update them deliberately and review generated changes
-before merging.
+vendored protobuf inputs. It also records the review process for pinned build
+inputs. Update them deliberately and review generated changes before merging.
+
+## Container Base Images
+
+The production Dockerfiles pin the Go, Node, and Debian base-image manifest
+digests while retaining the readable upstream tags in comments. The Bake graph
+is fixed to `linux/amd64`, and the Dockerfiles pin the reviewed amd64 manifests.
+Do not replace a digest with a floating tag.
+
+To update a base image:
+
+1. Review the relevant upstream release notes and security advisories.
+2. Inspect the tagged image and record the digest shown for its `linux/amd64`
+   manifest (not the top-level manifest-list digest):
+
+   ```bash
+   docker buildx imagetools inspect golang:1.26-bookworm
+   docker buildx imagetools inspect node:24-bookworm-slim
+   docker buildx imagetools inspect debian:bookworm-slim
+   ```
+
+3. Replace only the corresponding digest, retaining the readable tag comment.
+4. Run `docker buildx bake --print` and a local `MODE=build` image build. Check
+   that each result remains `linux/amd64`, non-root, and retains its entrypoint
+   and healthcheck.
 
 ## Protobuf Generator Model
 

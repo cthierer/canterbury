@@ -8,6 +8,9 @@ GOCACHE := $(CACHE_DIR)/go-build
 GOMODCACHE := $(CACHE_DIR)/go-mod
 GOLANGCI_LINT_CACHE := $(CACHE_DIR)/golangci-lint
 GOLANGCI_LINT_VERSION := v2.11.4
+IMAGE ?= all
+MODE ?= dry-run
+IMAGE_DIGESTS_FILE ?= $(CACHE_DIR)/image-digests.json
 
 export PATH := $(BIN_DIR):$(PATH)
 
@@ -23,6 +26,7 @@ help:
 	@printf '%s\n' '  make lint            Run Go linting'
 	@printf '%s\n' '  make smoke-auth      Run local auth smoke tests'
 	@printf '%s\n' '  make smoke-pomerium  Run local Pomerium stack smoke tests'
+	@printf '%s\n' '  make publish-images  Validate, build, or push immutable GHCR images'
 	@printf '%s\n' '  make proto-generate  Regenerate protobuf outputs'
 
 .PHONY: setup
@@ -75,6 +79,11 @@ smoke-auth:
 .PHONY: smoke-pomerium
 smoke-pomerium:
 	npm run smoke:pomerium
+
+.PHONY: publish-images
+publish-images:
+	@test -n "$(REF)" || { printf '%s\n' 'REF is required, for example: make publish-images REF=HEAD'; exit 2; }
+	REF="$(REF)" IMAGE="$(IMAGE)" MODE="$(MODE)" IMAGE_DIGESTS_FILE="$(IMAGE_DIGESTS_FILE)" node scripts/publish-images.mts
 
 .PHONY: proto-generate
 proto-generate:

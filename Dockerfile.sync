@@ -1,7 +1,9 @@
-FROM node:24-bookworm-slim
+# node:24-bookworm-slim (linux/amd64 manifest pinned; update per docs/maintenance.md)
+FROM node:24-bookworm-slim@sha256:65932751ed4073ed02f5c04e494e4b2572a891b7dbea0568a863dc80341bf848
 
 ARG CANTERBURY_VERSION=dev
 ARG CANTERBURY_REVISION=unknown
+ARG CANTERBURY_CREATED=1970-01-01T00:00:00Z
 
 WORKDIR /app
 

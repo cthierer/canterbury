@@ -1,7 +1,9 @@
-FROM golang:1.26-bookworm AS build
+# golang:1.26-bookworm (linux/amd64 manifest pinned; update per docs/maintenance.md)
+FROM golang:1.26-bookworm@sha256:db25d241820546be7b96953eea8d3e6bd15d413d59d00a75b68b74dfb5e2ecd2 AS build
 
 ARG CANTERBURY_VERSION=dev
 ARG CANTERBURY_REVISION=unknown
+ARG CANTERBURY_CREATED=1970-01-01T00:00:00Z
 
 WORKDIR /src
 
@@ -17,7 +19,8 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 	-ldflags "-X main.buildVersion=${CANTERBURY_VERSION} -X main.buildRevision=${CANTERBURY_REVISION}" \
 	-o /out/vault-service ./cmd/vault-service
 
-FROM debian:bookworm-slim
+# debian:bookworm-slim (linux/amd64 manifest pinned; update per docs/maintenance.md)
+FROM debian:bookworm-slim@sha256:362e64223cc0da95422b3b13c045186fc0a81250e765d31c025fbddf257f6143
 
 RUN apt-get update \
 	&& apt-get install -y --no-install-recommends ca-certificates \
