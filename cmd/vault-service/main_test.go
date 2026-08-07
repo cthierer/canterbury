@@ -149,6 +149,16 @@ func TestLoadHealthcheckConfigUsesSuiteConventions(t *testing.T) {
 
 	t.Setenv("VAULT_SERVICE_HEALTHCHECK_URL", " https://health.example.test/ ")
 	t.Setenv("VAULT_SERVICE_HEALTHCHECK_TIMEOUT", "250ms")
+	t.Setenv("VAULT_SERVICE_VAULT_SERVICE_HEALTHCHECK_URL", "https://unexpected.example.test/")
+	t.Setenv("VAULT_SERVICE_VAULT_SERVICE_HEALTHCHECK_TIMEOUT", "500ms")
+	got, err = loadHealthcheckConfig(nil, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("loadHealthcheckConfig() environment error = %v", err)
+	}
+	if got.URL != "https://health.example.test" || got.Timeout != 250*time.Millisecond {
+		t.Fatalf("loadHealthcheckConfig() = %+v, want documented environment values", got)
+	}
+
 	got, err = loadHealthcheckConfig([]string{"--url", "http://flag.example.test", "--timeout", "500ms"}, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("loadHealthcheckConfig() flags error = %v", err)

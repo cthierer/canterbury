@@ -56,8 +56,8 @@ type serveConfig struct {
 }
 
 type healthcheckConfig struct {
-	URL     string        `envconfig:"MCP_SERVER_HEALTHCHECK_URL"`
-	Timeout time.Duration `envconfig:"MCP_SERVER_HEALTHCHECK_TIMEOUT"`
+	URL     string        `envconfig:"HEALTHCHECK_URL"`
+	Timeout time.Duration `envconfig:"HEALTHCHECK_TIMEOUT"`
 }
 
 func main() {

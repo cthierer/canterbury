@@ -56,8 +56,8 @@ type serveConfig struct {
 }
 
 type healthcheckConfig struct {
-	URL     string        `envconfig:"VAULT_SERVICE_HEALTHCHECK_URL"`
-	Timeout time.Duration `envconfig:"VAULT_SERVICE_HEALTHCHECK_TIMEOUT"`
+	URL     string        `envconfig:"HEALTHCHECK_URL"`
+	Timeout time.Duration `envconfig:"HEALTHCHECK_TIMEOUT"`
 }
 
 type vaultServer struct {

@@ -110,13 +110,15 @@ func TestLoadHealthcheckConfigUsesDerivedDefaults(t *testing.T) {
 func TestLoadHealthcheckConfigEnvironmentAndFlags(t *testing.T) {
 	t.Setenv("MCP_SERVER_HEALTHCHECK_URL", " https://environment.example.test/probe ")
 	t.Setenv("MCP_SERVER_HEALTHCHECK_TIMEOUT", "250ms")
+	t.Setenv("MCP_SERVER_MCP_SERVER_HEALTHCHECK_URL", "https://unexpected.example.test/probe")
+	t.Setenv("MCP_SERVER_MCP_SERVER_HEALTHCHECK_TIMEOUT", "500ms")
 
 	got, err := loadHealthcheckConfig(nil, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("loadHealthcheckConfig() environment error = %v", err)
 	}
 	if got.URL != "https://environment.example.test/probe" || got.Timeout != 250*time.Millisecond {
-		t.Fatalf("loadHealthcheckConfig() = %+v, want environment values", got)
+		t.Fatalf("loadHealthcheckConfig() = %+v, want documented environment values", got)
 	}
 
 	got, err = loadHealthcheckConfig([]string{
