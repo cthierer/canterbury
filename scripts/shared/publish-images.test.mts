@@ -74,12 +74,16 @@ test('resolves only the checked-out revision and reads its commit time', () => {
 		if (args[0] === 'rev-parse') return revision
 		if (args[0] === 'status') return ''
 		if (args[0] === 'tag') return 'v1.2.3-rc.1'
-		if (args[0] === 'show') return '2026-08-06T12:34:56+00:00'
+		if (args.join(' ') === `show -s --format=%cI ${revision}`) {
+			return '2026-08-06T12:34:56+00:00'
+		}
+		if (args.join(' ') === `show -s --format=%ct ${revision}`) return '1786019696'
 		throw new Error(`unexpected command: ${args.join(' ')}`)
 	}
 
 	const plan = resolvePublishPlan({ image: 'sync', mode: 'push', ref: 'v1.2.3-rc.1' }, run)
 	assert.equal(plan.revision, revision)
+	assert.equal(plan.sourceDateEpoch, '1786019696')
 	assert.deepEqual(plan.tags, [`sha-${revision}`, 'v1.2.3-rc.1'])
 	assert.equal(calls.includes('git status --porcelain'), true)
 })
@@ -94,11 +98,28 @@ test('rejects a release ref that is not an actual tag at the revision', () => {
 	const run = (_command: string, args: string[]): string => {
 		if (args[0] === 'rev-parse') return revision
 		if (args[0] === 'tag') return ''
-		if (args[0] === 'show') return '2026-08-06T12:34:56+00:00'
+		if (args.join(' ') === `show -s --format=%cI ${revision}`) {
+			return '2026-08-06T12:34:56+00:00'
+		}
+		if (args.join(' ') === `show -s --format=%ct ${revision}`) return '1786019696'
 		throw new Error(`unexpected command: ${args.join(' ')}`)
 	}
 
 	assert.throws(() => resolvePublishPlan({ image: 'all', mode: 'build', ref: 'v1.2.3' }, run))
+})
+
+test('rejects an invalid commit timestamp epoch', () => {
+	const run = (_command: string, args: string[]): string => {
+		if (args[0] === 'rev-parse') return revision
+		if (args[0] === 'tag') return ''
+		if (args.join(' ') === `show -s --format=%cI ${revision}`) {
+			return '2026-08-06T12:34:56+00:00'
+		}
+		if (args.join(' ') === `show -s --format=%ct ${revision}`) return 'not-an-epoch'
+		throw new Error(`unexpected command: ${args.join(' ')}`)
+	}
+
+	assert.throws(() => resolvePublishPlan({ image: 'all', mode: 'build', ref: 'HEAD' }, run))
 })
 
 test('parses the selected target digest from Buildx metadata', () => {
@@ -146,6 +167,7 @@ test('uses release versions in Bake arguments and emits resolved GitHub outputs'
 				images: ['mcp-server'],
 				mode: 'push',
 				revision,
+				sourceDateEpoch: '1786019696',
 				tags: [`sha-${revision}`, 'v1.2.3'],
 			},
 			(_command, args) => {
@@ -157,6 +179,11 @@ test('uses release versions in Bake arguments and emits resolved GitHub outputs'
 		assert.equal(calls[0].includes('mcp-server.args.CANTERBURY_VERSION=v1.2.3'), true)
 		assert.equal(
 			calls[0].includes('mcp-server.labels.org.opencontainers.image.version=v1.2.3'),
+			true,
+		)
+		assert.equal(calls[0].includes('mcp-server.args.SOURCE_DATE_EPOCH=1786019696'), true)
+		assert.equal(
+			calls[0].includes('mcp-server.output=type=image,push=true,rewrite-timestamp=true'),
 			true,
 		)
 		assert.deepEqual(JSON.parse(readFileSync(digestFile, 'utf8')), { 'mcp-server': digest })

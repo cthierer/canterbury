@@ -76,6 +76,14 @@ contacting a registry. `build` builds local `linux/amd64` images with Docker's
 local exporter and does not push. `push` is the only registry-writing mode; it
 requires a clean worktree and a prior `docker login ghcr.io`.
 
+All builds use the Git commit timestamp as BuildKit's `SOURCE_DATE_EPOCH` with
+the `rewrite-timestamp=true` exporter option and install runtime packages from
+a signed, immutable Debian Snapshot with exact direct package versions. This
+makes a clean rebuild of the same revision use the same base manifests, package
+inputs, and image and layer timestamps. See
+[Dependency Maintenance](maintenance.md#debian-runtime-packages) before
+changing those pins.
+
 The script rejects empty references, `latest`, major/minor or other moving
 release tags, build metadata, a ref that differs from `HEAD`, and commits with
 more than one eligible exact release tag. It always creates the full SHA tag.

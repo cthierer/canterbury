@@ -17,6 +17,7 @@ export type PublishPlan = {
 	images: ImageName[]
 	mode: PublishMode
 	revision: string
+	sourceDateEpoch: string
 	tags: string[]
 }
 
@@ -146,9 +147,15 @@ export const resolvePublishPlan = (
 	}
 	const tags = tagsForRevision(revision, tagsAtRevision)
 	const created = run('git', ['show', '-s', '--format=%cI', revision])
+	const sourceDateEpoch = run('git', ['show', '-s', '--format=%ct', revision])
 
 	if (Number.isNaN(Date.parse(created))) {
 		throw new Error(`Git returned an invalid commit timestamp: ${JSON.stringify(created)}`)
+	}
+	if (!/^(?:0|[1-9]\d*)$/.test(sourceDateEpoch)) {
+		throw new Error(
+			`Git returned an invalid commit timestamp epoch: ${JSON.stringify(sourceDateEpoch)}`,
+		)
 	}
 
 	return {
@@ -157,6 +164,7 @@ export const resolvePublishPlan = (
 		images: parseImageSelection(image),
 		mode: selectedMode,
 		revision,
+		sourceDateEpoch,
 		tags,
 	}
 }
@@ -209,6 +217,8 @@ const bakeCommand = (
 		'--set',
 		`${image}.args.CANTERBURY_CREATED=${plan.created}`,
 		'--set',
+		`${image}.args.SOURCE_DATE_EPOCH=${plan.sourceDateEpoch}`,
+		'--set',
 		`${image}.labels.org.opencontainers.image.version=${version}`,
 		'--set',
 		`${image}.labels.org.opencontainers.image.revision=${plan.revision}`,
@@ -222,11 +232,11 @@ const bakeCommand = (
 	}
 
 	if (plan.mode === 'build') {
-		args.push('--set', `${image}.output=type=docker`)
+		args.push('--set', `${image}.output=type=docker,rewrite-timestamp=true`)
 		args.push('--provenance=false', '--sbom=false')
 	}
 	if (plan.mode === 'push') {
-		args.push('--push')
+		args.push('--set', `${image}.output=type=image,push=true,rewrite-timestamp=true`)
 	}
 	args.push(image)
 

@@ -4,6 +4,8 @@ FROM golang:1.26-bookworm@sha256:db25d241820546be7b96953eea8d3e6bd15d413d59d00a7
 ARG CANTERBURY_VERSION=dev
 ARG CANTERBURY_REVISION=unknown
 ARG CANTERBURY_CREATED=1970-01-01T00:00:00Z
+ARG DEBIAN_SNAPSHOT=20260801T000000Z
+ARG SOURCE_DATE_EPOCH=0
 
 WORKDIR /src
 
@@ -22,13 +24,18 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # debian:bookworm-slim (linux/amd64 manifest pinned; update per docs/maintenance.md)
 FROM debian:bookworm-slim@sha256:362e64223cc0da95422b3b13c045186fc0a81250e765d31c025fbddf257f6143
 
-RUN apt-get update \
-	&& apt-get install -y --no-install-recommends ca-certificates \
-	&& rm -rf /var/lib/apt/lists/*
+ARG DEBIAN_SNAPSHOT=20260801T000000Z
+
+RUN printf '%s\n' "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} bookworm main" > /etc/apt/sources.list \
+	&& rm -f /etc/apt/sources.list.d/debian.sources \
+	&& apt-get update \
+	&& apt-get install -y --no-install-recommends ca-certificates=20230311+deb12u1 \
+	&& rm -rf /var/lib/apt/lists/* /var/log/apt /var/log/dpkg.log /var/cache/ldconfig/aux-cache
 
 COPY --from=build /out/vault-service /usr/local/bin/vault-service
 
 RUN useradd -m -u 10001 canterbury \
+	&& sed -i 's/^canterbury:\([^:]*\):[0-9]*/canterbury:\1:/' /etc/shadow \
 	&& mkdir -p /audit \
 	&& chown canterbury:canterbury /audit
 

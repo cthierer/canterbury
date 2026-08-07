@@ -13,6 +13,14 @@ variable "CREATED" {
   default = "1970-01-01T00:00:00Z"
 }
 
+variable "SOURCE_DATE_EPOCH" {
+  default = "0"
+}
+
+variable "DEBIAN_SNAPSHOT" {
+  default = "20260801T000000Z"
+}
+
 variable "REGISTRY" {
   default = "ghcr.io/cthierer"
 }
@@ -29,6 +37,8 @@ target "common" {
     CANTERBURY_VERSION = "${VERSION}"
     CANTERBURY_REVISION = "${REVISION}"
     CANTERBURY_CREATED = "${CREATED}"
+    DEBIAN_SNAPSHOT = "${DEBIAN_SNAPSHOT}"
+    SOURCE_DATE_EPOCH = "${SOURCE_DATE_EPOCH}"
   }
 
   labels = {
