@@ -36,12 +36,26 @@ jobs:
   check:
     name: Quality Checks
     runs-on: ubuntu-latest
+    outputs:
+      revision: ${{ steps.revision.outputs.revision }}
     permissions:
       contents: read
 
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+
+      - name: Record checked revision
+        id: revision
+        run: |
+          revision=$(git rev-parse --verify HEAD^{commit})
+          if ! [[ "$revision" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Expected a full 40-character commit SHA, got: $revision" >&2
+            exit 1
+          fi
+          printf 'revision=%s\n' "$revision" >> "$GITHUB_OUTPUT"
 
       - name: Set up Go
         uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
@@ -122,6 +136,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          ref: ${{ needs.check.outputs.revision }}
 
       - name: Set up Node.js
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -133,9 +149,13 @@ jobs:
         uses: docker/setup-buildx-action@8d2750c68a42422c14e847fe6c8ac0403b4cbd6f # v3
 
       - name: Build all images without registry access
-        run: MODE=build REF="$GITHUB_SHA" make publish-images
+        env:
+          CHECKED_REVISION: ${{ needs.check.outputs.revision }}
+        run: MODE=build REF="$CHECKED_REVISION" make publish-images
 
       - name: Inspect image runtime and OCI configuration
+        env:
+          CHECKED_REVISION: ${{ needs.check.outputs.revision }}
         run: |
           inspect_image() {
             image="$1"
@@ -146,22 +166,25 @@ jobs:
             test "$(docker image inspect "$image" --format '{{json .Config.Entrypoint}}')" != 'null'
             test "$(docker image inspect "$image" --format '{{json .Config.Healthcheck}}')" != 'null'
             test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.source"}}')" = 'https://github.com/cthierer/canterbury'
-            test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$GITHUB_SHA"
-            test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "sha-$GITHUB_SHA"
+            test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$CHECKED_REVISION"
+            test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.version"}}')" = "sha-$CHECKED_REVISION"
             test -n "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.created"}}')"
             test "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.licenses"}}')" = 'MIT'
             test -n "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.title"}}')"
             test -n "$(docker image inspect "$image" --format '{{index .Config.Labels "org.opencontainers.image.description"}}')"
           }
-          inspect_image "ghcr.io/cthierer/canterbury-mcp-server:sha-$GITHUB_SHA"
-          inspect_image "ghcr.io/cthierer/canterbury-vault-service:sha-$GITHUB_SHA"
-          inspect_image "ghcr.io/cthierer/canterbury-sync:sha-$GITHUB_SHA"
+          inspect_image "ghcr.io/cthierer/canterbury-mcp-server:sha-$CHECKED_REVISION"
+          inspect_image "ghcr.io/cthierer/canterbury-vault-service:sha-$CHECKED_REVISION"
+          inspect_image "ghcr.io/cthierer/canterbury-sync:sha-$CHECKED_REVISION"
 
   publish-images:
     name: Publish deployment images
     needs: check
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
+    concurrency:
+      group: publish-images-${{ needs.check.outputs.revision }}
+      cancel-in-progress: false
     outputs:
       revision: ${{ steps.publish.outputs.revision }}
       mcp_server_digest: ${{ steps.publish.outputs.mcp_server_digest }}
@@ -176,11 +199,11 @@ jobs:
         uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
         with:
           fetch-depth: 0
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+          ref: ${{ needs.check.outputs.revision }}
 
       - name: Validate requested revision is reachable from main
         env:
-          PUBLISH_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+          PUBLISH_REF: ${{ needs.check.outputs.revision }}
         run: |
           git fetch --no-tags origin main
           commit=$(git rev-parse --verify "${PUBLISH_REF}^{commit}")
@@ -198,7 +221,7 @@ jobs:
       - name: Validate publish inputs before authentication
         env:
           PUBLISH_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.image || 'all' }}
-          PUBLISH_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+          PUBLISH_REF: ${{ needs.check.outputs.revision }}
         run: MODE=dry-run IMAGE="$PUBLISH_IMAGE" REF="$PUBLISH_REF" make publish-images
 
       - name: Authenticate to GitHub Container Registry
@@ -211,7 +234,7 @@ jobs:
         env:
           IMAGE_DIGESTS_FILE: .cache/image-digests.json
           PUBLISH_IMAGE: ${{ github.event_name == 'workflow_dispatch' && inputs.image || 'all' }}
-          PUBLISH_REF: ${{ github.event_name == 'workflow_dispatch' && inputs.ref || github.ref }}
+          PUBLISH_REF: ${{ needs.check.outputs.revision }}
         run: MODE=push IMAGE="$PUBLISH_IMAGE" REF="$PUBLISH_REF" make publish-images
 
       - name: Upload immutable image digests
