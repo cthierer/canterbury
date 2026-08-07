@@ -25,7 +25,7 @@ on:
           - sync
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.event_name == 'workflow_dispatch' && inputs.ref || github.sha }}
+  group: ci-${{ github.workflow }}-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || format('run-{0}', github.run_id) }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
@@ -182,9 +182,6 @@ jobs:
     needs: check
     if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-    concurrency:
-      group: publish-images-${{ needs.check.outputs.revision }}
-      cancel-in-progress: false
     outputs:
       revision: ${{ steps.publish.outputs.revision }}
       mcp_server_digest: ${{ steps.publish.outputs.mcp_server_digest }}
