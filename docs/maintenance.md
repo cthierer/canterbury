@@ -1,8 +1,71 @@
 # Dependency Maintenance
 
 This guide covers Canterbury's pinned code generators, MCP dependencies, and
-vendored protobuf inputs. Update them deliberately and review generated changes
-before merging.
+vendored protobuf inputs. It also records the review process for pinned build
+inputs. Update them deliberately and review generated changes before merging.
+
+## Container Base Images
+
+The production Dockerfiles pin the Go, Node, and Debian base-image manifest
+digests while retaining the readable upstream tags in comments. The Bake graph
+is fixed to `linux/amd64`, and the Dockerfiles pin the reviewed amd64 manifests.
+Do not replace a digest with a floating tag.
+
+To update a base image:
+
+1. Review the relevant upstream release notes and security advisories.
+2. Inspect the tagged image and record the digest shown for its `linux/amd64`
+   manifest (not the top-level manifest-list digest):
+
+   ```bash
+   docker buildx imagetools inspect golang:1.26-bookworm
+   docker buildx imagetools inspect node:24-bookworm-slim
+   docker buildx imagetools inspect debian:bookworm-slim
+   ```
+
+3. Replace only the corresponding digest, retaining the readable tag comment.
+4. Run `docker buildx bake --print` and a local `MODE=build` image build. Check
+   that each result remains `linux/amd64`, non-root, and retains its entrypoint
+   and healthcheck.
+
+## Debian Runtime Packages
+
+The runtime stages do not use Debian's live package repositories. They use the
+immutable Bookworm snapshot named by `DEBIAN_SNAPSHOT` in `docker-bake.hcl` and
+pin each directly installed package version in its Dockerfile. The snapshot
+metadata is signed by Debian; the initial bootstrap fetch uses HTTP because the
+minimal Debian base does not yet contain CA certificates. APT verifies the
+signed Release metadata and package checksums before installing anything.
+
+To update this package set:
+
+1. Choose a published Debian Snapshot timestamp and verify its Bookworm
+   `Release` file and amd64 package candidates. For example:
+
+   ```bash
+   snapshot=20260801T000000Z
+   curl --fail --location \
+     "https://snapshot.debian.org/archive/debian/${snapshot}/dists/bookworm/Release"
+   docker run --rm --platform linux/amd64 debian:bookworm-slim@<pinned-digest> \
+     sh -ec "printf '%s\\n' 'deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${snapshot} bookworm main' > /etc/apt/sources.list; rm -f /etc/apt/sources.list.d/debian.sources; apt-get update; apt-cache policy ca-certificates git tini"
+   ```
+
+2. Replace `DEBIAN_SNAPSHOT` in `docker-bake.hcl` and the exact package
+   versions in the Dockerfiles together. Keep direct package versions explicit;
+   transitive dependencies are fixed by the snapshot's signed package index.
+   Keep the removal of APT's timestamped logs and ldconfig cache, plus
+   normalization of the locked service-account aging field; all are image
+   inputs rather than required runtime state.
+3. Run `docker buildx bake --print`, `MODE=build make publish-images REF=HEAD`,
+   and repeat a clean registry-compatible build. Compare the OCI manifest
+   digests before merging. Docker's local image importer can assign different
+   local image IDs even when the registry exporter produces the same manifest.
+
+The shared image publisher passes Git's commit epoch to BuildKit as
+`SOURCE_DATE_EPOCH` and uses BuildKit's `rewrite-timestamp=true` exporter
+option. Do not replace either with wall-clock build time: together they fix the
+image configuration and layer timestamps to the source commit and are required
+for rebuilds of the same revision to produce the same image identity.
 
 ## Protobuf Generator Model
 

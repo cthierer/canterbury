@@ -146,6 +146,15 @@ Run the full repository check:
 make check
 ```
 
+## Deployment Images
+
+Canterbury publishes Linux/amd64 deployment images for its MCP server, vault
+service, and sync worker to GHCR. Images receive immutable full-commit SHA tags;
+production deployments must use the reported manifest digest. See
+[Publishing Canterbury Images](docs/releasing-images.md) for package names,
+manual build and publish modes, provenance/SBOM verification, and the required
+post-publish public-package and anonymous-pull checks.
+
 ## Install Canterbury
 
 1. Clone this repository.

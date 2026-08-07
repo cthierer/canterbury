@@ -1,16 +1,22 @@
-FROM node:24-bookworm-slim
+# node:24-bookworm-slim (linux/amd64 manifest pinned; update per docs/maintenance.md)
+FROM node:24-bookworm-slim@sha256:65932751ed4073ed02f5c04e494e4b2572a891b7dbea0568a863dc80341bf848
 
 ARG CANTERBURY_VERSION=dev
 ARG CANTERBURY_REVISION=unknown
+ARG CANTERBURY_CREATED=1970-01-01T00:00:00Z
+ARG DEBIAN_SNAPSHOT=20260801T000000Z
+ARG SOURCE_DATE_EPOCH=0
 
 WORKDIR /app
 
-RUN apt-get update \
+RUN printf '%s\n' "deb [check-valid-until=no] http://snapshot.debian.org/archive/debian/${DEBIAN_SNAPSHOT} bookworm main" > /etc/apt/sources.list \
+	&& rm -f /etc/apt/sources.list.d/debian.sources \
+	&& apt-get update \
 	&& apt-get install -y --no-install-recommends \
-		ca-certificates \
-		git \
-		tini \
-	&& rm -rf /var/lib/apt/lists/*
+		ca-certificates=20230311+deb12u1 \
+		git=1:2.39.5-0+deb12u3 \
+		tini=0.19.0-1+b3 \
+	&& rm -rf /var/lib/apt/lists/* /var/log/apt /var/log/dpkg.log /var/cache/ldconfig/aux-cache
 
 COPY sync/package.json sync/package-lock.json ./
 RUN npm ci --omit=dev
@@ -20,6 +26,7 @@ RUN mkdir -p /vault /run/canterbury-sync
 VOLUME ["/vault"]
 
 RUN useradd -m -u 10001 obsidian \
+	&& sed -i 's/^obsidian:\([^:]*\):[0-9]*/obsidian:\1:/' /etc/shadow \
 	&& chown -R obsidian:obsidian /app /vault /run/canterbury-sync
 
 ENV SYNC_VAULT_PATH=/vault
